@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { startTest, submitTest } from './api.js';
+import logo from './assets/logo.png';
+import logoMark from './assets/logo-mark.png';
 
 const LETTERS = ['A', 'B', 'C', 'D'];
 
 function Icon({ name, size = 20 }) {
   const paths = {
-    shield: <path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.700-7-5.500-7-10V6l7-3zM9 12l2 2 4-4" />,
     check: <path d="M5 12.500l4.500 4.500L19 7.500" />,
     x: <path d="M6 6l12 12M18 6L6 18" />,
     arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
@@ -63,6 +64,7 @@ function StartScreen({ onStart }) {
 
   return (
     <form className="card" onSubmit={handleSubmit}>
+      <img className="logo" src={logo} alt="Uzinkass" width="96" height="120" />
       <h1>Bilimni sinash testi</h1>
       <p className="lead">Testni boshlash uchun ma'lumotlaringizni kiriting.</p>
 
@@ -322,9 +324,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="brand">
-        <span className="brand-mark">
-          <Icon name="shield" size={22} />
-        </span>
+        <img className="brand-mark" src={logoMark} alt="" width="34" height="38" />
         <span className="brand-name">Uzinkass</span>
         <span className="brand-sub">Xodimlar test sinovi</span>
       </header>
