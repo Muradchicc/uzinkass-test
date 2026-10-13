@@ -93,3 +93,13 @@ curl -o %TEMP%\uzinkass.cer http://10.0.57.208/uzinkass-cert.cer && certutil -ad
 
 (yoki `trust-https.cmd 10.0.57.208`). Keyin brauzerni yopib qayta oching. Firefox o'z sertifikat
 omboridan foydalanadi — unda `about:config` da `security.enterprise_roots.enabled` ni `true` qiling.
+
+## Serverdagi kodni yangilash
+
+Server kompyuterida, administrator PowerShell'da:
+
+```
+[Net.ServicePointManager]::SecurityProtocol = 'Tls12'; irm https://raw.githubusercontent.com/Muradchicc/uzinkass-test/main/update-server.ps1 | iex
+```
+
+Skript GitHub'dan oxirgi versiyani yuklab, o'rnatilgan papka ustiga ko'chiradi (`server\.env` saqlanadi) va serverni qayta ishga tushiradi.
