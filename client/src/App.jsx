@@ -1,7 +1,44 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { startTest, submitTest } from './api.js';
 
 const LETTERS = ['A', 'B', 'C', 'D'];
+
+function Icon({ name, size = 20 }) {
+  const paths = {
+    shield: <path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.700-7-5.500-7-10V6l7-3zM9 12l2 2 4-4" />,
+    check: <path d="M5 12.500l4.500 4.500L19 7.500" />,
+    x: <path d="M6 6l12 12M18 6L6 18" />,
+    arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
+    arrowLeft: <path d="M19 12H5M11 6l-6 6 6 6" />,
+    alert: <path d="M12 8v5M12 16.500v.500M12 3l9.500 17h-19L12 3z" />,
+  };
+  return (
+    <svg
+      className="icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {paths[name]}
+    </svg>
+  );
+}
+
+function ErrorMessage({ children }) {
+  if (!children) return null;
+  return (
+    <p className="error" role="alert">
+      <Icon name="alert" size={18} />
+      <span>{children}</span>
+    </p>
+  );
+}
 
 function StartScreen({ onStart }) {
   const [fullName, setFullName] = useState('');
@@ -26,32 +63,44 @@ function StartScreen({ onStart }) {
 
   return (
     <form className="card" onSubmit={handleSubmit}>
-      <h1>Test sinovi</h1>
-      <p className="muted">Testni boshlash uchun ma'lumotlaringizni kiriting.</p>
+      <h1>Bilimni sinash testi</h1>
+      <p className="lead">Testni boshlash uchun ma'lumotlaringizni kiriting.</p>
 
-      <label>
-        F.I.SH
+      <div className="field">
+        <label htmlFor="fullName">F.I.SH</label>
         <input
+          id="fullName"
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           placeholder="Familiya Ism Sharif"
+          autoComplete="name"
           maxLength={120}
           autoFocus
         />
-      </label>
-      <label>
-        Lavozim
+      </div>
+      <div className="field">
+        <label htmlFor="position">Lavozim</label>
         <input
+          id="position"
           value={position}
           onChange={(e) => setPosition(e.target.value)}
           placeholder="Lavozimingiz"
+          autoComplete="organization-title"
           maxLength={120}
         />
-      </label>
+      </div>
 
-      {error && <p className="error">{error}</p>}
-      <button className="primary" disabled={!ready || loading}>
+      <ul className="rules">
+        <li>Har bir savolda bitta to'g'ri javob bor.</li>
+        <li>Vaqt chegaralanmagan, oldingi savolga qaytish mumkin.</li>
+        <li>Natija test yakunida ko'rsatiladi.</li>
+      </ul>
+
+      <ErrorMessage>{error}</ErrorMessage>
+      <button className="btn primary block" disabled={!ready || loading}>
+        {loading ? <span className="spinner" aria-hidden="true" /> : null}
         {loading ? 'Yuklanmoqda…' : 'Testni boshlash'}
+        {loading ? null : <Icon name="arrowRight" />}
       </button>
     </form>
   );
@@ -63,10 +112,17 @@ function QuizScreen({ test, onFinish }) {
   const [answers, setAnswers] = useState(() => questions.map(() => null));
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const headingRef = useRef(null);
 
   const question = questions[index];
   const isLast = index === questions.length - 1;
   const answered = answers[index] !== null;
+  const doneCount = answers.filter((a) => a !== null).length;
+
+  // Yangi savolga o'tganda fokus savol matniga ko'chadi (klaviatura va ekran o'quvchilar uchun)
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, [index]);
 
   function choose(option) {
     setAnswers((prev) => prev.map((a, i) => (i === index ? option : a)));
@@ -87,41 +143,84 @@ function QuizScreen({ test, onFinish }) {
   return (
     <div className="card">
       <div className="progress-head">
-        <span>
-          Savol {index + 1} / {questions.length}
+        <span className="step">
+          Savol <strong>{index + 1}</strong> / {questions.length}
         </span>
         <span className="badge">{question.section}</span>
       </div>
-      <div className="progress">
-        <div style={{ width: `${((index + 1) / questions.length) * 100}%` }} />
+      <div
+        className="progress"
+        role="progressbar"
+        aria-label="Javob berilgan savollar"
+        aria-valuemin={0}
+        aria-valuemax={questions.length}
+        aria-valuenow={doneCount}
+      >
+        <div style={{ transform: `scaleX(${doneCount / questions.length})` }} />
       </div>
 
-      <h2>{question.text}</h2>
+      <div className="question" key={index}>
+        <h2 ref={headingRef} tabIndex={-1}>
+          {question.text}
+        </h2>
 
-      <div className="options">
-        {question.options.map((option, i) => (
-          <button
-            key={i}
-            type="button"
-            className={`option${answers[index] === i ? ' selected' : ''}`}
-            onClick={() => choose(i)}
-          >
-            <span className="letter">{LETTERS[i]}</span>
-            <span>{option}</span>
-          </button>
-        ))}
+        <div className="options" role="radiogroup" aria-label="Javob variantlari">
+          {question.options.map((option, i) => {
+            const selected = answers[index] === i;
+            return (
+              <button
+                key={i}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                className={`option${selected ? ' selected' : ''}`}
+                onClick={() => choose(i)}
+              >
+                <span className="letter">{selected ? <Icon name="check" size={16} /> : LETTERS[i]}</span>
+                <span className="option-text">{option}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {error && <p className="error">{error}</p>}
+      <ErrorMessage>{error}</ErrorMessage>
       <div className="nav">
-        <button type="button" disabled={index === 0 || loading} onClick={() => setIndex(index - 1)}>
+        <button type="button" className="btn" disabled={index === 0 || loading} onClick={() => setIndex(index - 1)}>
+          <Icon name="arrowLeft" />
           Orqaga
         </button>
-        <button type="button" className="primary" disabled={!answered || loading} onClick={next}>
+        <button type="button" className="btn primary" disabled={!answered || loading} onClick={next}>
+          {loading ? <span className="spinner" aria-hidden="true" /> : null}
           {loading ? 'Yuborilmoqda…' : isLast ? 'Yakunlash' : 'Keyingi'}
+          {loading ? null : <Icon name={isLast ? 'check' : 'arrowRight'} />}
         </button>
       </div>
     </div>
+  );
+}
+
+function ScoreRing({ percent }) {
+  const radius = 52;
+  const length = 2 * Math.PI * radius;
+  return (
+    <svg className="ring" viewBox="0 0 120 120" width="132" height="132" aria-hidden="true">
+      <circle className="ring-track" cx="60" cy="60" r={radius} />
+      <circle
+        className="ring-value"
+        cx="60"
+        cy="60"
+        r={radius}
+        strokeDasharray={length}
+        strokeDashoffset={length * (1 - percent / 100)}
+      />
+      <text x="60" y="58" className="ring-percent">
+        {percent}%
+      </text>
+      <text x="60" y="78" className="ring-label">
+        natija
+      </text>
+    </svg>
   );
 }
 
@@ -129,49 +228,70 @@ function ResultScreen({ result, onRestart }) {
   return (
     <div className="card">
       <h1>Test yakunlandi</h1>
-      <p className="muted">
-        {result.fullName} — {result.position}
+      <p className="lead">
+        {result.fullName} · {result.position}
       </p>
 
       <div className="score">
-        <strong>
-          {result.correct} / {result.total}
-        </strong>
-        <span>{result.percent}%</span>
+        <ScoreRing percent={result.percent} />
+        <div>
+          <p className="score-value">
+            {result.correct} <span>/ {result.total}</span>
+          </p>
+          <p className="score-caption">to'g'ri javob</p>
+        </div>
       </div>
 
       <h3>Bo'limlar bo'yicha</h3>
       <ul className="sections">
         {result.sections.map((s) => (
           <li key={s.section}>
-            <span>{s.section}</span>
-            <span>
-              {s.correct} / {s.total}
-            </span>
+            <div className="section-row">
+              <span>{s.section}</span>
+              <span className="section-count">
+                {s.correct} / {s.total}
+              </span>
+            </div>
+            <div className="bar">
+              <div style={{ transform: `scaleX(${s.correct / s.total})` }} />
+            </div>
           </li>
         ))}
       </ul>
 
       {result.mistakes.length > 0 ? (
         <>
-          <h3>Xato javoblar</h3>
+          <h3>Xato javoblar ({result.mistakes.length})</h3>
           <ul className="mistakes">
             {result.mistakes.map((m) => (
               <li key={m.number}>
                 <p className="mistake-q">
                   {m.number}. {m.text}
                 </p>
-                <p className="wrong">Sizning javobingiz: {m.yourAnswer ?? 'javob berilmagan'}</p>
-                <p className="right">To'g'ri javob: {m.correctAnswer}</p>
+                <p className="answer wrong">
+                  <Icon name="x" size={16} />
+                  <span>
+                    <b>Sizning javobingiz:</b> {m.yourAnswer ?? 'javob berilmagan'}
+                  </span>
+                </p>
+                <p className="answer right">
+                  <Icon name="check" size={16} />
+                  <span>
+                    <b>To'g'ri javob:</b> {m.correctAnswer}
+                  </span>
+                </p>
               </li>
             ))}
           </ul>
         </>
       ) : (
-        <p className="right">Barcha savollarga to'g'ri javob berdingiz.</p>
+        <p className="all-right">
+          <Icon name="check" />
+          Barcha savollarga to'g'ri javob berdingiz.
+        </p>
       )}
 
-      <button className="primary" onClick={onRestart}>
+      <button className="btn primary block" onClick={onRestart}>
         Bosh sahifaga qaytish
       </button>
     </div>
@@ -199,5 +319,16 @@ export default function App() {
     screen = <StartScreen onStart={setTest} />;
   }
 
-  return <main className="app">{screen}</main>;
+  return (
+    <div className="app">
+      <header className="brand">
+        <span className="brand-mark">
+          <Icon name="shield" size={22} />
+        </span>
+        <span className="brand-name">Uzinkass</span>
+        <span className="brand-sub">Xodimlar test sinovi</span>
+      </header>
+      <main>{screen}</main>
+    </div>
+  );
 }
