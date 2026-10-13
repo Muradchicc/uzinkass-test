@@ -1,0 +1,34 @@
+{
+  "sections": [
+    {
+      "title": "Xavfsizlik",
+      "rows": [
+        ["Savol", "A", "B", "C", "D", "To'g'ri javob"],
+        ["[TEST] Yong'in chiqqanda birinchi navbatda nima qilinadi?", "Yong'in xizmatiga xabar beriladi", "Hujjatlar yig'iladi", "Derazalar ochiladi", "Ish davom ettiriladi", "A"],
+        ["[TEST] Yong'in xizmati raqami qaysi?", "102", "101", "103", "104", "B"],
+        ["[TEST] Begona shaxs xizmat xonasiga kirmoqchi bo'lsa nima qilinadi?", "Ichkariga kiritiladi", "E'tibor berilmaydi", "Ruxsatnomasi tekshiriladi", "Kalit beriladi", "Ruxsatnomasi tekshiriladi"],
+        ["[TEST] Parolni kimga aytish mumkin?", "Hamkasbga", "Rahbarga", "Do'stga", "Hech kimga", "D"]
+      ]
+    },
+    {
+      "title": "Inkassatsiya qoidalari",
+      "rows": [
+        ["Savol", "A", "B", "C", "D", "To'g'ri javob"],
+        ["[TEST] Inkassatsiya sumkasi qanday holatda qabul qilinadi?", "Ochiq holda", "Plombalangan holda", "Bo'sh holda", "Farqi yo'q", "B"],
+        ["[TEST] Marshrut varaqasi kim tomonidan imzolanadi?", "Haydovchi", "Qorovul", "Mas'ul xodim", "Mijoz", "C"],
+        ["[TEST] Plomba shikastlangan bo'lsa nima qilinadi?", "Dalolatnoma tuziladi", "Qabul qilinaveradi", "Tashlab yuboriladi", "Yangi plomba qo'yiladi", "1"],
+        ["[TEST] Yo'lda marshrutni o'zgartirish mumkinmi?", "Ha, istalgan vaqtda", "Haydovchi xohlasa", "Faqat rahbariyat ruxsati bilan", "Mijoz so'rasa", "C"]
+      ]
+    },
+    {
+      "title": "Mehnat muhofazasi",
+      "rows": [
+        ["Savol", "A", "B", "C", "D", "To'g'ri javob"],
+        ["[TEST] Ish boshlashdan oldin qanday yo'riqnoma o'tiladi?", "Kirish yo'riqnomasi", "Yakuniy yo'riqnoma", "Hech qanday", "Og'zaki suhbat", "A"],
+        ["[TEST] Tez tibbiy yordam raqami qaysi?", "101", "102", "103", "104", "C"],
+        ["[TEST] Ishda jarohat olinsa kimga xabar beriladi?", "Hech kimga", "Bevosita rahbarga", "Qo'shniga", "Mijozga", "B"],
+        ["[TEST] Haftalik ish vaqtining me'yoriy davomiyligi necha soat?", "30", "36", "48", "40", "D"]
+      ]
+    }
+  ]
+}

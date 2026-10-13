@@ -1,0 +1,53 @@
+// Berilgan bo'lsa (GitHub Pages yig'masi) sahifa serversiz, to'g'ridan-to'g'ri Apps Script bilan ishlaydi
+const SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL;
+
+const OFFLINE = "Server bilan aloqa yo'q. Tarmoqni tekshirib, qayta urinib ko'ring.";
+
+async function request(url, init) {
+  let res;
+  try {
+    res = await fetch(url, init);
+  } catch {
+    throw new Error(OFFLINE);
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) throw new Error(data.error || `Xatolik (${res.status})`);
+  return data;
+}
+
+const post = (path, body) =>
+  request(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+// Apps Script rejimida sessiya brauzerda saqlanadi
+let current = null;
+
+async function startViaScript(fullName, position) {
+  const { questions } = await request(`${SCRIPT_URL}?action=start`);
+  current = { fullName, position, questions, startedAt: Date.now() };
+  return { sessionId: 'script', questions };
+}
+
+function submitViaScript(answers) {
+  return request(SCRIPT_URL, {
+    method: 'POST',
+    // text/plain — Apps Script'ga CORS preflight'siz boradi
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({
+      action: 'submit',
+      fullName: current.fullName,
+      position: current.position,
+      seconds: Math.round((Date.now() - current.startedAt) / 1000),
+      answers: current.questions.map((q, i) => ({ id: q.id, answer: q.options[answers[i]] ?? null })),
+    }),
+  });
+}
+
+export const startTest = (fullName, position) =>
+  SCRIPT_URL ? startViaScript(fullName, position) : post('/api/start', { fullName, position });
+
+export const submitTest = (sessionId, answers) =>
+  SCRIPT_URL ? submitViaScript(answers) : post('/api/submit', { sessionId, answers });

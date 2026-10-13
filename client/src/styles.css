@@ -1,0 +1,265 @@
+:root {
+  --bg: #f2f4f8;
+  --card: #ffffff;
+  --text: #1a2233;
+  --muted: #6b7588;
+  --line: #dde2ea;
+  --accent: #1f5fd1;
+  --accent-soft: #e8f0fd;
+  --ok: #17803d;
+  --bad: #c0392b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, -apple-system, Roboto, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 24px 16px 40px;
+}
+
+.card {
+  width: 100%;
+  max-width: 480px;
+  background: var(--card);
+  border-radius: 16px;
+  padding: 24px 20px;
+  box-shadow: 0 4px 20px rgba(26, 34, 51, 0.08);
+}
+
+h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+}
+
+h2 {
+  margin: 20px 0 16px;
+  font-size: 19px;
+  line-height: 1.35;
+}
+
+h3 {
+  margin: 24px 0 8px;
+  font-size: 15px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.muted {
+  margin: 0 0 20px;
+  color: var(--muted);
+}
+
+label {
+  display: block;
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+input {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 12px 14px;
+  font: inherit;
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  outline: none;
+}
+
+input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  padding: 12px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--text);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.card > button.primary {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.error {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fdecea;
+  color: var(--bad);
+  font-size: 14px;
+}
+
+.progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  text-align: right;
+}
+
+.progress {
+  height: 6px;
+  margin-top: 10px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.progress > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s;
+}
+
+.options {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+}
+
+.option.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.letter {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.option.selected .letter {
+  background: var(--accent);
+  color: #fff;
+}
+
+.nav {
+  display: flex;
+  gap: 10px;
+}
+
+.nav button {
+  flex: 1;
+}
+
+.score {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 14px;
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.score strong {
+  font-size: 40px;
+}
+
+.score span {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.sections,
+.mistakes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sections li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.mistakes li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.mistakes p {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.mistakes .mistake-q {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.wrong {
+  color: var(--bad);
+}
+
+.right {
+  color: var(--ok);
+}
+
+.mistakes + button.primary,
+.card > .right + button.primary {
+  margin-top: 20px;
+}
