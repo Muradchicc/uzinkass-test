@@ -79,3 +79,17 @@ Nomi `_` bilan boshlanadigan listlar savol sifatida o'qilmaydi.
 
 Skript Node.js'ni o'rnatadi (bo'lmasa), frontendni yig'adi, firewall'da portni ochadi va serverni
 kompyuter yonganda o'zi ishga tushadigan qiladi ("Uzinkass test" nomli Task Scheduler vazifasi).
+
+## https:// → http:// yo'naltirish
+
+Server 443-portda ham tinglaydi va `https://SERVER` so'rovlarini `http://SERVER` ga yo'naltiradi.
+Sertifikat server tomonidan o'zi yaratiladi, shuning uchun brauzer ogohlantirish ko'rsatadi.
+Ogohlantirishsiz, to'g'ridan-to'g'ri o'tishi uchun har bir mijoz kompyuterda **bir marta**,
+administrator buyruq oynasida:
+
+```
+curl -o %TEMP%\uzinkass.cer http://10.0.57.208/uzinkass-cert.cer && certutil -addstore -f Root %TEMP%\uzinkass.cer
+```
+
+(yoki `trust-https.cmd 10.0.57.208`). Keyin brauzerni yopib qayta oching. Firefox o'z sertifikat
+omboridan foydalanadi — unda `about:config` da `security.enterprise_roots.enabled` ni `true` qiling.

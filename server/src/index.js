@@ -5,7 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from './config.js';
 import { sheetsEnabled } from './sheets.js';
-import { startHttpsRedirect } from './httpsRedirect.js';
+import { startHttpsRedirect, publicCertificate } from './httpsRedirect.js';
 import { refreshQuestions, pickQuestions, grade, saveResult, flushPending, status } from './quiz.js';
 
 const app = express();
@@ -57,6 +57,12 @@ app.post('/api/submit', (req, res) => {
   saveResult(session, result);
 
   res.json({ fullName: session.fullName, position: session.position, ...result });
+});
+
+app.get('/uzinkass-cert.cer', (req, res) => {
+  const cert = publicCertificate();
+  if (!cert) return res.status(404).send('Sertifikat yaratilmagan');
+  res.type('application/x-x509-ca-cert').send(cert);
 });
 
 if (fs.existsSync(config.clientDist)) {
