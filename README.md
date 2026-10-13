@@ -67,3 +67,14 @@ Nomi `_` bilan boshlanadigan listlar savol sifatida o'qilmaydi.
 | `APPS_SCRIPT_TOKEN` | `Code.gs` dagi `TOKEN` | — |
 | `PORT` | Server porti | 80 |
 | `QUESTION_COUNT` | Testdagi savollar soni | 10 |
+
+## Serverni boshqa kompyuterga o'rnatish
+
+1. Loyihani ko'chiring (GitHub'dan ZIP) va eski kompyuterdagi `server\.env` faylini `server\` papkasiga qo'ying.
+2. Administrator PowerShell'da, loyiha papkasida:
+   ```
+   powershell -ExecutionPolicy Bypass -File .\install-server.ps1
+   ```
+
+Skript Node.js'ni o'rnatadi (bo'lmasa), frontendni yig'adi, firewall'da portni ochadi va serverni
+kompyuter yonganda o'zi ishga tushadigan qiladi ("Uzinkass test" nomli Task Scheduler vazifasi).
