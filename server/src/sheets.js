@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { config } from './config.js';
+import { DEFAULT_REGIONS } from './defaults.js';
 
 const TIMEOUT_MS = 20000;
 
@@ -67,15 +68,36 @@ function parseRows(title, rows) {
   return questions;
 }
 
+const clean = (value) =>
+  String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+// Jadvaldagi "_Sozlamalar" listidan kelgan qiymatlar; yetishmaganlari standart bilan to'ldiriladi
+function normalizeSettings(raw, sections) {
+  const regions = (raw?.regions ?? []).map(clean).filter(Boolean);
+  const directions = (raw?.directions ?? [])
+    .map((d) => ({ name: clean(d?.name), sheets: (d?.sheets ?? []).map(clean).filter(Boolean) }))
+    .filter((d) => d.name);
+  return {
+    regions: regions.length ? regions : DEFAULT_REGIONS,
+    // Sozlanmagan bo'lsa har bir savollar listi alohida yo'nalish hisoblanadi
+    directions: directions.length ? directions : sections.map((s) => ({ name: s.title, sheets: [s.title] })),
+    questionCount: Number(raw?.questionCount) || config.questionCount,
+    secondsPerQuestion: Number(raw?.secondsPerQuestion) || config.secondsPerQuestion,
+  };
+}
+
 // Har bir list — bitta bo'lim
-export async function fetchSections() {
+export async function fetchData() {
   const data = sheetsEnabled
     ? await callScript({ method: 'GET' }, { action: 'questions', token: config.appsScriptToken })
     : JSON.parse(fs.readFileSync(config.fakeDataFile, 'utf8'));
 
-  return (data.sections ?? [])
+  const sections = (data.sections ?? [])
     .map((s) => ({ title: String(s.title), questions: parseRows(s.title, s.rows ?? []) }))
     .filter((section) => section.questions.length);
+  return { sections, settings: normalizeSettings(data.settings, sections) };
 }
 
 export async function appendResultRow(row) {

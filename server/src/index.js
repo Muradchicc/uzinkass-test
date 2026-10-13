@@ -6,7 +6,17 @@ import crypto from 'node:crypto';
 import { config } from './config.js';
 import { sheetsEnabled } from './sheets.js';
 import { startHttpsRedirect, publicCertificate } from './httpsRedirect.js';
-import { refreshQuestions, pickQuestions, grade, saveResult, flushPending, status } from './quiz.js';
+import {
+  refreshQuestions,
+  publicConfig,
+  findRegion,
+  findDirection,
+  pickQuestions,
+  grade,
+  saveResult,
+  flushPending,
+  status,
+} from './quiz.js';
 
 const app = express();
 app.use(express.json({ limit: '100kb' }));
@@ -21,26 +31,47 @@ const clean = (value, max) =>
 
 app.get('/api/status', (req, res) => res.json(status()));
 
-app.post('/api/start', (req, res) => {
-  const fullName = clean(req.body?.fullName, 120);
-  const position = clean(req.body?.position, 120);
-  if (fullName.length < 3 || !position) {
-    return res.status(400).json({ error: 'F.I.SH va lavozimni kiriting' });
-  }
+const NOT_READY = "Savollar hali yuklanmagan. Birozdan so'ng qayta urinib ko'ring.";
 
-  const questions = pickQuestions();
+app.get('/api/config', (req, res) => {
+  const data = publicConfig();
+  if (!data) return res.status(503).json({ error: NOT_READY });
+  res.json(data);
+});
+
+app.post('/api/start', (req, res) => {
+  if (!publicConfig()) return res.status(503).json({ error: NOT_READY });
+
+  const names = [req.body?.lastName, req.body?.firstName, req.body?.middleName].map((v) => clean(v, 60));
+  if (names.some((n) => n.length < 2)) {
+    return res.status(400).json({ error: "Familiya, ism va sharifni to'liq kiriting" });
+  }
+  const region = findRegion(clean(req.body?.region, 120));
+  if (!region) return res.status(400).json({ error: 'Hududni tanlang' });
+  const direction = findDirection(clean(req.body?.direction, 120));
+  if (!direction) return res.status(400).json({ error: "Yo'nalishni tanlang" });
+
+  const { questions, timeLimit } = pickQuestions(direction);
   if (!questions.length) {
-    return res.status(503).json({ error: "Savollar hali yuklanmagan. Birozdan so'ng qayta urinib ko'ring." });
+    return res.status(503).json({ error: "Bu yo'nalish uchun savollar topilmadi" });
   }
 
   const sessionId = crypto.randomUUID();
   // Cloudflare tunnel orqali kelgan so'rovlarda cf-ray sarlavhasi bo'ladi
   const source = req.headers['cf-ray'] || req.headers['cf-connecting-ip'] ? 'Internet' : 'Lokal tarmoq';
-  sessions.set(sessionId, { fullName, position, questions, source, startedAt: Date.now() });
+  sessions.set(sessionId, {
+    region,
+    fullName: names.join(' '),
+    direction: direction.name,
+    questions,
+    source,
+    startedAt: Date.now(),
+  });
 
   // To'g'ri javoblar brauzerga yuborilmaydi
   res.json({
     sessionId,
+    timeLimit,
     questions: questions.map(({ section, text, options }) => ({ section, text, options })),
   });
 });
@@ -56,7 +87,7 @@ app.post('/api/submit', (req, res) => {
   sessions.delete(req.body.sessionId);
   saveResult(session, result);
 
-  res.json({ fullName: session.fullName, position: session.position, ...result });
+  res.json({ fullName: session.fullName, region: session.region, direction: session.direction, ...result });
 });
 
 app.get('/uzinkass-cert.cer', (req, res) => {

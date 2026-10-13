@@ -6,10 +6,10 @@
  *
  * Ikki xil mijoz ishlatadi:
  *  - lokal server (token bilan): action=questions, action=result
- *  - internetdagi sahifa (GitHub Pages, tokensiz): action=start, action=submit
+ *  - internetdagi sahifa (GitHub Pages, tokensiz): action=config, action=start, action=submit
  *
- * Google Forms javoblari ham "Natijalar" listiga tushishi uchun formani shu jadvalga
- * bog'lang va setupFormTrigger funksiyasini bir marta ishga tushiring.
+ * Hududlar, yo'nalishlar va test sozlamalari "_Sozlamalar" listida turadi
+ * (list bo'lmasa birinchi murojaatda o'zi yaratiladi).
  */
 
 // TOKEN alohida Token.gs faylida turadi (u GitHub'ga yuklanmaydi):
@@ -18,25 +18,37 @@
 // Barcha natijalar yoziladigan list
 const RESULTS_SHEET = 'Natijalar';
 
-// Internetdagi sahifa uchun bitta testdagi savollar soni
-const QUESTION_COUNT = 10;
+// Hududlar, yo'nalishlar va sozlamalar listi
+const SETTINGS_SHEET = '_Sozlamalar';
 
 // Savollar olinmaydigan qo'shimcha listlar. Google Forms javoblari listi va
 // "_" bilan boshlanadigan listlar avtomatik o'tkazib yuboriladi.
 const EXCLUDE_SHEETS = ['Umumiy'];
 
 const RESULT_HEADER = [
-  'Sana va vaqt', 'F.I.SH', 'Lavozim', "To'g'ri javoblar", 'Jami savollar',
+  'Sana va vaqt', 'Hudud', 'F.I.SH', "Yo'nalish", "To'g'ri javoblar", 'Jami savollar',
   'Foiz (%)', "Bo'limlar bo'yicha", 'Davomiyligi', 'Manba',
 ];
 
-// Formadagi F.I.SH va lavozim savollari sarlavhasida shu so'zlardan biri bo'lishi kerak
+// "_Sozlamalar" listi bo'lmaganda yoki ustuni bo'sh bo'lganda ishlatiladigan qiymatlar
+const DEFAULT_REGIONS = [
+  "Qoraqalpog'iston Respublikasi", 'Andijon viloyati', 'Buxoro viloyati', 'Jizzax viloyati',
+  'Qashqadaryo viloyati', 'Navoiy viloyati', 'Namangan viloyati', 'Samarqand viloyati',
+  'Surxondaryo viloyati', 'Sirdaryo viloyati', 'Toshkent viloyati', "Farg'ona viloyati",
+  'Xorazm viloyati', 'Toshkent shahri',
+];
+const DEFAULT_QUESTION_COUNT = 10;
+const DEFAULT_SECONDS_PER_QUESTION = 60;
+
+// Formadagi savollar sarlavhasida shu so'zlardan biri bo'lishi kerak
 const NAME_WORDS = ['f.i.sh', 'f.i.o', 'fish', 'fio', 'ism', 'фио', 'ф.и.о', 'ф.и.ш'];
-const POSITION_WORDS = ['lavozim', 'должность', 'лавозим'];
+const DIRECTION_WORDS = ["yo'nalish", 'lavozim', 'направление', 'должность', 'йўналиш', 'лавозим'];
+const REGION_WORDS = ['hudud', 'viloyat', 'регион', 'область', 'ҳудуд', 'вилоят'];
 
 function doGet(e) {
   const action = e.parameter.action;
-  if (action === 'start') return json(startTest());
+  if (action === 'config') return json(publicConfig());
+  if (action === 'start') return json(startTest(e.parameter.direction));
 
   if (e.parameter.token !== TOKEN) return json({ error: "Token noto'g'ri" });
   if (action !== 'questions') return json({ error: "Noma'lum amal" });
@@ -44,7 +56,7 @@ function doGet(e) {
   const sections = questionSheets().map(function (sheet) {
     return { title: sheet.getName(), rows: sheet.getDataRange().getDisplayValues() };
   });
-  return json({ sections: sections });
+  return json({ sections: sections, settings: loadSettings() });
 }
 
 function doPost(e) {
@@ -53,36 +65,54 @@ function doPost(e) {
 
   if (body.token !== TOKEN) return json({ error: "Token noto'g'ri" });
   if (body.action !== 'result' || !Array.isArray(body.row)) return json({ error: "Noma'lum amal" });
+  // Yangilanmagan server eski tartibdagi qator yuborsa, ustunlar aralashib ketmasligi uchun
+  if (body.row.length !== RESULT_HEADER.length) return json({ error: 'Server eski versiyada — uni yangilang' });
 
   appendResult(body.row);
   return json({ ok: true });
 }
 
-/** Bo'limlardan navbatma-navbat bittadan olib, jami QUESTION_COUNT ta savol beradi (to'g'ri javoblarsiz). */
-function startTest() {
+/** Bosh sahifa uchun: hududlar va yo'nalishlar ro'yxati. */
+function publicConfig() {
+  const settings = loadSettings();
+  return {
+    regions: settings.regions,
+    directions: settings.directions.map(function (d) { return d.name; }),
+    secondsPerQuestion: settings.secondsPerQuestion,
+  };
+}
+
+/** Yo'nalishga biriktirilgan listlardan navbatma-navbat bittadan olib, savollar beradi (to'g'ri javoblarsiz). */
+function startTest(directionName) {
+  const settings = loadSettings();
+  const direction = findDirection(settings, directionName);
+  if (!direction) return { error: "Yo'nalish topilmadi" };
+
   const pools = {};
   const names = [];
   shuffle(loadQuestions()).forEach(function (q) {
+    if (!inDirection(direction, q.section)) return;
     if (!pools[q.section]) {
       pools[q.section] = [];
       names.push(q.section);
     }
     pools[q.section].push(q);
   });
-  if (!names.length) return { error: 'Savollar topilmadi' };
+  if (!names.length) return { error: "Bu yo'nalish uchun savollar topilmadi" };
 
   const picked = [];
   let found = true;
-  while (picked.length < QUESTION_COUNT && found) {
+  while (picked.length < settings.questionCount && found) {
     found = false;
     shuffle(names).forEach(function (name) {
-      if (picked.length >= QUESTION_COUNT || !pools[name].length) return;
+      if (picked.length >= settings.questionCount || !pools[name].length) return;
       picked.push(pools[name].pop());
       found = true;
     });
   }
 
   return {
+    timeLimit: picked.length * settings.secondsPerQuestion,
     questions: shuffle(picked).map(function (q) {
       return { id: q.id, section: q.section, text: q.text, options: shuffle(q.options) };
     }),
@@ -91,9 +121,9 @@ function startTest() {
 
 /** Internetdagi sahifadan kelgan javoblarni baholab, "Natijalar" listiga yozadi. */
 function submitTest(body) {
-  const fullName = clean(body.fullName);
-  const position = clean(body.position);
-  if (fullName.length < 3 || !position) return { error: 'F.I.SH va lavozimni kiriting' };
+  const settings = loadSettings();
+  const person = readPerson(body, settings);
+  if (person.error) return person;
 
   const byId = {};
   loadQuestions().forEach(function (q) { byId[q.id] = q; });
@@ -105,7 +135,7 @@ function submitTest(body) {
   let correct = 0;
   let total = 0;
 
-  (Array.isArray(body.answers) ? body.answers : []).slice(0, QUESTION_COUNT).forEach(function (item) {
+  (Array.isArray(body.answers) ? body.answers : []).slice(0, settings.questionCount).forEach(function (item) {
     const q = item && byId[item.id];
     if (!q || seen[q.id]) return;
     seen[q.id] = true;
@@ -119,12 +149,12 @@ function submitTest(body) {
       stats[q.section].correct++;
       correct++;
     } else {
+      // To'g'ri javob xodimga ko'rsatilmaydi
       mistakes.push({
         number: total,
         section: q.section,
         text: q.text,
         yourAnswer: item.answer ? clean(item.answer) : null,
-        correctAnswer: q.correct,
       });
     }
   });
@@ -136,8 +166,9 @@ function submitTest(body) {
 
   appendResult([
     now(),
-    fullName,
-    position,
+    person.region,
+    person.fullName,
+    person.direction,
     correct,
     total,
     percent,
@@ -147,9 +178,105 @@ function submitTest(body) {
   ]);
 
   return {
-    fullName: fullName, position: position, correct: correct, total: total,
-    percent: percent, sections: sections, mistakes: mistakes,
+    fullName: person.fullName, region: person.region, direction: person.direction,
+    correct: correct, total: total, percent: percent, sections: sections, mistakes: mistakes,
   };
+}
+
+function readPerson(body, settings) {
+  const parts = [clean(body.lastName), clean(body.firstName), clean(body.middleName)];
+  if (parts.some(function (p) { return p.length < 2; })) return { error: "Familiya, ism va sharifni to'liq kiriting" };
+  const region = clean(body.region);
+  if (settings.regions.indexOf(region) === -1) return { error: 'Hududni tanlang' };
+  const direction = findDirection(settings, body.direction);
+  if (!direction) return { error: "Yo'nalishni tanlang" };
+  return { region: region, fullName: parts.join(' '), direction: direction.name };
+}
+
+function findDirection(settings, name) {
+  const wanted = clean(name);
+  return settings.directions.filter(function (d) { return d.name === wanted; })[0] || null;
+}
+
+// Listlari ko'rsatilmagan yo'nalishga barcha listlardan savol tushadi
+function inDirection(direction, section) {
+  return !direction.sheets.length || direction.sheets.map(norm).indexOf(norm(section)) !== -1;
+}
+
+/**
+ * "_Sozlamalar" listini o'qiydi:
+ *   A — Hududlar | B — Yo'nalishlar | C — yo'nalish listlari (vergul bilan) | E — Sozlama | F — Qiymat
+ */
+function loadSettings() {
+  const book = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = book.getSheetByName(SETTINGS_SHEET) || createSettingsSheet(book);
+
+  const regions = [];
+  const directions = [];
+  const values = {};
+  sheet.getDataRange().getDisplayValues().slice(1).forEach(function (row) {
+    if (clean(row[0])) regions.push(clean(row[0]));
+    if (clean(row[1])) {
+      directions.push({
+        name: clean(row[1]),
+        sheets: String(row[2] || '').split(/[;,]/).map(clean).filter(Boolean),
+      });
+    }
+    if (clean(row[4])) values[norm(row[4])] = row[5];
+  });
+
+  function numberSetting(word, fallback, min, max) {
+    const key = Object.keys(values).filter(function (k) { return k.indexOf(word) !== -1; })[0];
+    const n = parseInt(values[key], 10);
+    return n >= min && n <= max ? n : fallback;
+  }
+
+  return {
+    regions: regions.length ? regions : DEFAULT_REGIONS,
+    directions: directions.length ? directions : defaultDirections(),
+    questionCount: numberSetting('soni', DEFAULT_QUESTION_COUNT, 1, 200),
+    secondsPerQuestion: numberSetting('vaqt', DEFAULT_SECONDS_PER_QUESTION, 5, 3600),
+  };
+}
+
+// Sozlanmagan bo'lsa har bir savollar listi alohida yo'nalish hisoblanadi
+function defaultDirections() {
+  return questionSheets().map(function (sheet) {
+    return { name: sheet.getName(), sheets: [sheet.getName()] };
+  });
+}
+
+function createSettingsSheet(book) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const existing = book.getSheetByName(SETTINGS_SHEET);
+    if (existing) return existing;
+
+    const directions = defaultDirections();
+    const rows = [[
+      'Hududlar', "Yo'nalishlar", "Yo'nalish listlari (vergul bilan; bo'sh — barcha listlar)", '', 'Sozlama', 'Qiymat',
+    ]];
+    const height = Math.max(DEFAULT_REGIONS.length, directions.length, 2);
+    for (let i = 0; i < height; i++) {
+      rows.push([
+        DEFAULT_REGIONS[i] || '',
+        directions[i] ? directions[i].name : '',
+        directions[i] ? directions[i].sheets.join(', ') : '',
+        '',
+        ['Savollar soni', 'Bir savolga vaqt (soniya)'][i] || '',
+        [DEFAULT_QUESTION_COUNT, DEFAULT_SECONDS_PER_QUESTION][i] || '',
+      ]);
+    }
+    const sheet = book.insertSheet(SETTINGS_SHEET);
+    sheet.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+    sheet.getRange(1, 1, 1, rows[0].length).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+    sheet.autoResizeColumns(1, rows[0].length);
+    return sheet;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** Bir marta qo'lda ishga tushiriladi: forma javobi kelganda onFormSubmit chaqiriladigan qiladi. */
@@ -170,7 +297,8 @@ function onFormSubmit(e) {
   const stats = {};
   const order = [];
   let fullName = '';
-  let position = '';
+  let direction = '';
+  let region = '';
   let correct = 0;
   let total = 0;
 
@@ -180,8 +308,9 @@ function onFormSubmit(e) {
     const question = bank[key];
 
     if (!question) {
-      if (!fullName && hasWord(key, NAME_WORDS)) fullName = answer;
-      else if (!position && hasWord(key, POSITION_WORDS)) position = answer;
+      if (!region && hasWord(key, REGION_WORDS)) region = answer;
+      else if (!direction && hasWord(key, DIRECTION_WORDS)) direction = answer;
+      else if (!fullName && hasWord(key, NAME_WORDS)) fullName = answer;
       return;
     }
     if (!stats[question.section]) {
@@ -198,8 +327,9 @@ function onFormSubmit(e) {
 
   appendResult([
     now(),
+    region,
     fullName,
-    position,
+    direction,
     correct,
     total,
     total ? Math.round((correct / total) * 100) : '',
@@ -255,10 +385,20 @@ function appendResult(row) {
   try {
     const book = SpreadsheetApp.getActiveSpreadsheet();
     let sheet = book.getSheetByName(RESULTS_SHEET);
+    if (sheet && sheet.getLastRow() > 0) {
+      // Ustunlari eski tartibdagi list saqlab qo'yiladi, natijalar yangisiga yoziladi
+      const header = sheet.getRange(1, 1, 1, RESULT_HEADER.length).getDisplayValues()[0];
+      if (header.join('|') !== RESULT_HEADER.join('|')) {
+        sheet.setName('_' + RESULTS_SHEET + ' eski ' + Utilities.formatDate(new Date(), 'Asia/Tashkent', 'yyyy-MM-dd HH.mm.ss'));
+        sheet = null;
+      }
+    }
     if (!sheet) {
       sheet = book.insertSheet(RESULTS_SHEET);
       sheet.appendRow(RESULT_HEADER);
       sheet.setFrozenRows(1);
+    } else if (sheet.getLastRow() === 0) {
+      sheet.appendRow(RESULT_HEADER);
     }
     sheet.appendRow(row);
   } finally {

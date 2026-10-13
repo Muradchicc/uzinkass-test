@@ -1,19 +1,25 @@
-import { config } from './config.js';
 import { readJson, writeJson } from './store.js';
-import { fetchSections, appendResultRow, sheetsEnabled } from './sheets.js';
+import { fetchData, appendResultRow, sheetsEnabled } from './sheets.js';
 
 const QUESTIONS_FILE = 'questions.json';
 const PENDING_FILE = 'pending.json';
 const RESULTS_FILE = 'results.json';
 
-// Fake rejimda eski Sheets keshi ishlatilmaydi
-const cached = sheetsEnabled ? readJson(QUESTIONS_FILE, null) : null;
+// Fake rejimda eski Sheets keshi ishlatilmaydi. Sozlamalarsiz eski kesh ham yaroqsiz.
+const saved = sheetsEnabled ? readJson(QUESTIONS_FILE, null) : null;
+const cached = saved?.settings ? saved : null;
 let sections = cached?.sections ?? [];
+let settings = cached?.settings ?? null;
 let lastSync = cached?.syncedAt ?? null;
 let lastSyncError = null;
 
-let pending = readJson(PENDING_FILE, []);
+// Eski tartibdagi (hududsiz, 9 ustunli) navbatdagi natijalar yangi ustunlarga moslanadi
+let pending = readJson(PENDING_FILE, []).map((row) =>
+  row.length === 9 ? [row[0], '', row[1], row[2], ...row.slice(3)] : row,
+);
 let flushing = false;
+
+const norm = (value) => String(value ?? '').trim().toLowerCase();
 
 export function shuffle(items) {
   const a = [...items];
@@ -26,12 +32,13 @@ export function shuffle(items) {
 
 export async function refreshQuestions() {
   try {
-    const fresh = await fetchSections();
-    if (!fresh.length) throw new Error('Yaroqli savollar topilmadi');
-    sections = fresh;
+    const fresh = await fetchData();
+    if (!fresh.sections.length) throw new Error('Yaroqli savollar topilmadi');
+    sections = fresh.sections;
+    settings = fresh.settings;
     lastSync = new Date().toISOString();
     lastSyncError = null;
-    if (sheetsEnabled) writeJson(QUESTIONS_FILE, { syncedAt: lastSync, sections });
+    if (sheetsEnabled) writeJson(QUESTIONS_FILE, { syncedAt: lastSync, sections, settings });
   } catch (err) {
     // Internet uzilsa oxirgi saqlangan savollar bilan ishlayveramiz
     lastSyncError = err.message;
@@ -39,18 +46,36 @@ export async function refreshQuestions() {
   }
 }
 
-// Bo'limlardan navbatma-navbat bittadan olib, jami `count` ta savol yig'adi
-export function pickQuestions(count = config.questionCount) {
-  const pools = shuffle(sections).map((s) => ({ title: s.title, questions: shuffle(s.questions) }));
+// Bosh sahifa uchun: hududlar va yo'nalishlar ro'yxati
+export function publicConfig() {
+  if (!settings) return null;
+  return {
+    regions: settings.regions,
+    directions: settings.directions.map((d) => d.name),
+    secondsPerQuestion: settings.secondsPerQuestion,
+  };
+}
+
+export const findRegion = (name) => settings?.regions.find((r) => r === name) ?? null;
+export const findDirection = (name) => settings?.directions.find((d) => d.name === name) ?? null;
+
+// Yo'nalishga biriktirilgan bo'limlardan navbatma-navbat bittadan olib savollar yig'adi.
+// Listlari ko'rsatilmagan yo'nalishga barcha bo'limlardan savol tushadi.
+export function pickQuestions(direction) {
+  const allowed = direction.sheets.map(norm);
+  const pools = shuffle(sections)
+    .filter((s) => !allowed.length || allowed.includes(norm(s.title)))
+    .map((s) => ({ title: s.title, questions: shuffle(s.questions) }));
+
   const picked = [];
-  while (picked.length < count && pools.some((p) => p.questions.length)) {
+  while (picked.length < settings.questionCount && pools.some((p) => p.questions.length)) {
     for (const pool of pools) {
-      if (picked.length >= count) break;
+      if (picked.length >= settings.questionCount) break;
       const question = pool.questions.pop();
       if (question) picked.push({ ...question, section: pool.title });
     }
   }
-  return shuffle(picked).map((q) => {
+  const questions = shuffle(picked).map((q) => {
     const order = shuffle([0, 1, 2, 3]);
     return {
       id: q.id,
@@ -60,8 +85,10 @@ export function pickQuestions(count = config.questionCount) {
       correctIndex: order.indexOf(q.correctIndex),
     };
   });
+  return { questions, timeLimit: questions.length * settings.secondsPerQuestion };
 }
 
+// Javobsiz qolgan savollar xato hisoblanadi
 export function grade(session, answers) {
   const bySection = new Map();
   const mistakes = [];
@@ -73,12 +100,12 @@ export function grade(session, answers) {
       stat.correct++;
       correct++;
     } else {
+      // To'g'ri javob xodimga ko'rsatilmaydi
       mistakes.push({
         number: i + 1,
         section: q.section,
         text: q.text,
         yourAnswer: q.options[answers[i]] ?? null,
-        correctAnswer: q.options[q.correctIndex],
       });
     }
     bySection.set(q.section, stat);
@@ -103,8 +130,9 @@ export function saveResult(session, result) {
   // Ustunlar tartibi apps-script/Code.gs dagi RESULT_HEADER bilan bir xil
   const row = [
     now.toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent' }),
+    session.region,
     session.fullName,
-    session.position,
+    session.direction,
     result.correct,
     result.total,
     result.percent,
@@ -144,7 +172,9 @@ export function status() {
     mode: sheetsEnabled ? 'google-sheets' : 'fake-data',
     sections: sections.map((s) => ({ title: s.title, questions: s.questions.length })),
     totalQuestions: sections.reduce((n, s) => n + s.questions.length, 0),
-    questionCount: config.questionCount,
+    questionCount: settings?.questionCount ?? null,
+    secondsPerQuestion: settings?.secondsPerQuestion ?? null,
+    directions: settings?.directions ?? [],
     lastSync,
     lastSyncError,
     pendingResults: sheetsEnabled ? pending.length : 0,

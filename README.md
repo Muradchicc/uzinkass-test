@@ -1,7 +1,8 @@
 # Uzinkass — xodimlar uchun test sinovi
 
 React (frontend) + Express (backend). Savollar Google Sheets'dan olinadi, har bir list — bitta bo'lim.
-Har bir testda barcha bo'limlardan aralash holda jami 10 ta savol tushadi.
+Xodim hudud, F.I.SH va yo'nalishni kiritadi; yo'nalishga biriktirilgan bo'limlardan aralash holda savollar tushadi.
+Har bir savolga 1 daqiqa hisobidan umumiy vaqt beriladi, vaqt tugasa test yakunlanadi.
 
 ## Ishga tushirish
 
@@ -38,6 +39,20 @@ Har bir bo'lim uchun alohida list, 1-qator — sarlavha:
 "To'g'ri javob" ustuniga `A`/`B`/`C`/`D` harfi, `1`–`4` raqami yoki to'g'ri variantning matni yoziladi.
 Nomi `_` bilan boshlanadigan listlar savol sifatida o'qilmaydi.
 
+## Hududlar, yo'nalishlar va sozlamalar
+
+Jadvaldagi `_Sozlamalar` listida turadi (list bo'lmasa Apps Script uni birinchi murojaatda o'zi yaratadi):
+
+| A — Hududlar | B — Yo'nalishlar | C — Yo'nalish listlari | | E — Sozlama | F — Qiymat |
+|---|---|---|---|---|---|
+| Toshkent shahri | Inkassator | Xavfsizlik, Inkassatsiya qoidalari | | Savollar soni | 10 |
+| Andijon viloyati | Haydovchi | Xavfsizlik | | Bir savolga vaqt (soniya) | 60 |
+
+- **C ustuni** — shu yo'nalishdagi xodimga qaysi listlardan savol tushishi (vergul bilan). Bo'sh bo'lsa barcha listlardan tushadi.
+- Umumiy vaqt = savollar soni × bir savolga vaqt. Javobsiz qolgan savollar xato hisoblanadi.
+- Ustun bo'sh qolsa standart qiymatlar ishlatiladi: 14 ta hudud, har bir list alohida yo'nalish, 10 ta savol, 60 soniya.
+- O'zgarishlar internet sahifasida darhol, lokal serverda 5 daqiqa ichida kuchga kiradi.
+
 ## Google Sheets'ga ulash (Apps Script)
 
 1. Jadvalda **Extensions → Apps Script** oching, `apps-script/Code.gs` dagi kodni joylang. Yonida `Token` nomli yana bir fayl ochib, unga `const TOKEN = 'maxfiy-soz';` qatorini yozing.
@@ -50,7 +65,9 @@ Nomi `_` bilan boshlanadigan listlar savol sifatida o'qilmaydi.
 
 ## Natijalar
 
-- Lokal tarmoqdan topshirilgan testlar jadvalning **Natijalar** listiga yoziladi ("Manba" ustuni — `Lokal tarmoq`).
+- Barcha natijalar jadvalning **Natijalar** listiga yoziladi. Ustunlar: sana, hudud, F.I.SH, yo'nalish, to'g'ri javoblar, jami, foiz, bo'limlar bo'yicha, davomiyligi, manba (`Lokal tarmoq` yoki `Internet`).
+- Ustunlari eski tartibdagi **Natijalar** listi o'chirilmaydi: `_Natijalar eski …` deb nomlanib, yangisi ochiladi.
+- Xodimga xato javoblari ko'rsatiladi, lekin to'g'ri javob ko'rsatilmaydi.
 - Google Forms javoblari ham **Natijalar** listiga yoziladi ("Manba" — `Google Forms`). Buning uchun:
   1. Formani shu jadvalga bog'lang (Forms → Responses → Link to Sheets → shu jadvalni tanlang).
   2. Apps Script muharririda `setupFormTrigger` funksiyasini bir marta ishga tushiring.
@@ -67,7 +84,8 @@ Nomi `_` bilan boshlanadigan listlar savol sifatida o'qilmaydi.
 | `APPS_SCRIPT_TOKEN` | `Code.gs` dagi `TOKEN` | — |
 | `PORT` | Server porti | 80 |
 | `HTTPS_REDIRECT_PORT` | `https://` so'rovlarini `http://` ga yo'naltiruvchi port (0 — o'chirilgan) | 443 |
-| `QUESTION_COUNT` | Testdagi savollar soni | 10 |
+| `QUESTION_COUNT` | Savollar soni (`_Sozlamalar` da ko'rsatilmagan bo'lsa) | 10 |
+| `SECONDS_PER_QUESTION` | Bir savolga vaqt, soniya (`_Sozlamalar` da ko'rsatilmagan bo'lsa) | 60 |
 
 ## Serverni boshqa kompyuterga o'rnatish
 

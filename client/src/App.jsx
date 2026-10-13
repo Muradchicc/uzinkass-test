@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { startTest, submitTest } from './api.js';
+import { loadConfig, startTest, submitTest } from './api.js';
 import logo from './assets/logo.png';
 import logoMark from './assets/logo-mark.png';
 
@@ -7,11 +7,11 @@ const LETTERS = ['A', 'B', 'C', 'D'];
 
 function Icon({ name, size = 20 }) {
   const paths = {
-    check: <path d="M5 12.500l4.500 4.500L19 7.500" />,
+    check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
     x: <path d="M6 6l12 12M18 6L6 18" />,
     arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
-    arrowLeft: <path d="M19 12H5M11 6l-6 6 6 6" />,
-    alert: <path d="M12 8v5M12 16.500v.500M12 3l9.500 17h-19L12 3z" />,
+    alert: <path d="M12 8v5M12 16.5v.5M12 3l9.5 17h-19L12 3z" />,
+    clock: <path d="M12 7v5l3 2M12 3a9 9 0 100 18 9 9 0 000-18z" />,
   };
   return (
     <svg
@@ -41,13 +41,39 @@ function ErrorMessage({ children }) {
   );
 }
 
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 function StartScreen({ onStart }) {
-  const [fullName, setFullName] = useState('');
-  const [position, setPosition] = useState('');
+  const [options, setOptions] = useState(null);
+  const [form, setForm] = useState({ region: '', lastName: '', firstName: '', middleName: '', direction: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const ready = fullName.trim().length >= 3 && position.trim().length > 0;
+  function fetchOptions() {
+    setError('');
+    loadConfig()
+      .then(setOptions)
+      .catch((err) => setError(err.message));
+  }
+  useEffect(fetchOptions, []);
+
+  const set = (field) => (event) => setForm((prev) => ({ ...prev, [field]: event.target.value }));
+
+  const person = {
+    region: form.region,
+    lastName: form.lastName.trim(),
+    firstName: form.firstName.trim(),
+    middleName: form.middleName.trim(),
+    direction: form.direction,
+  };
+  const ready =
+    person.region &&
+    person.direction &&
+    [person.lastName, person.firstName, person.middleName].every((name) => name.length >= 2);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -55,71 +81,148 @@ function StartScreen({ onStart }) {
     setLoading(true);
     setError('');
     try {
-      onStart(await startTest(fullName.trim(), position.trim()));
+      onStart(await startTest(person));
     } catch (err) {
       setError(err.message);
       setLoading(false);
     }
   }
 
+  const minutesPerQuestion = options ? Math.round((options.secondsPerQuestion / 60) * 10) / 10 : 1;
+
   return (
     <form className="card" onSubmit={handleSubmit}>
       <img className="logo" src={logo} alt="Uzinkass" width="96" height="120" />
       <h1>Bilimni sinash testi</h1>
-      <p className="lead">Testni boshlash uchun ma'lumotlaringizni kiriting.</p>
+      <p className="lead">Testni boshlash uchun ma'lumotlaringizni to'liq kiriting.</p>
 
       <div className="field">
-        <label htmlFor="fullName">F.I.SH</label>
+        <label htmlFor="region">Hudud</label>
+        <select id="region" value={form.region} onChange={set('region')} disabled={!options} required>
+          <option value="">{options ? 'Hududni tanlang' : 'Yuklanmoqda…'}</option>
+          {options?.regions.map((region) => (
+            <option key={region}>{region}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="field">
+        <label htmlFor="lastName">Familiya</label>
         <input
-          id="fullName"
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-          placeholder="Familiya Ism Sharif"
-          autoComplete="name"
-          maxLength={120}
-          autoFocus
+          id="lastName"
+          value={form.lastName}
+          onChange={set('lastName')}
+          placeholder="Familiyangiz"
+          autoComplete="family-name"
+          maxLength={60}
+          required
         />
       </div>
       <div className="field">
-        <label htmlFor="position">Lavozim</label>
+        <label htmlFor="firstName">Ism</label>
         <input
-          id="position"
-          value={position}
-          onChange={(e) => setPosition(e.target.value)}
-          placeholder="Lavozimingiz"
-          autoComplete="organization-title"
-          maxLength={120}
+          id="firstName"
+          value={form.firstName}
+          onChange={set('firstName')}
+          placeholder="Ismingiz"
+          autoComplete="given-name"
+          maxLength={60}
+          required
         />
+      </div>
+      <div className="field">
+        <label htmlFor="middleName">Sharif</label>
+        <input
+          id="middleName"
+          value={form.middleName}
+          onChange={set('middleName')}
+          placeholder="Otangizning ismi"
+          autoComplete="additional-name"
+          maxLength={60}
+          required
+        />
+      </div>
+
+      <div className="field">
+        <label htmlFor="direction">Yo'nalish</label>
+        <select id="direction" value={form.direction} onChange={set('direction')} disabled={!options} required>
+          <option value="">{options ? "Yo'nalishni tanlang" : 'Yuklanmoqda…'}</option>
+          {options?.directions.map((direction) => (
+            <option key={direction}>{direction}</option>
+          ))}
+        </select>
       </div>
 
       <ul className="rules">
         <li>Har bir savolda bitta to'g'ri javob bor.</li>
-        <li>Vaqt chegaralanmagan, oldingi savolga qaytish mumkin.</li>
-        <li>Natija test yakunida ko'rsatiladi.</li>
+        <li>Har bir savolga {minutesPerQuestion} daqiqa hisobidan umumiy vaqt beriladi.</li>
+        <li>Vaqt tugasa test yakunlanadi, javobsiz savollar xato hisoblanadi.</li>
+        <li>Oldingi savolga qaytib, javobni o'zgartirib bo'lmaydi.</li>
       </ul>
 
       <ErrorMessage>{error}</ErrorMessage>
-      <button className="btn primary block" disabled={!ready || loading}>
-        {loading ? <span className="spinner" aria-hidden="true" /> : null}
-        {loading ? 'Yuklanmoqda…' : 'Testni boshlash'}
-        {loading ? null : <Icon name="arrowRight" />}
-      </button>
+      {options ? (
+        <button className="btn primary block" disabled={!ready || loading}>
+          {loading ? <span className="spinner" aria-hidden="true" /> : null}
+          {loading ? 'Yuklanmoqda…' : 'Testni boshlash'}
+          {loading ? null : <Icon name="arrowRight" />}
+        </button>
+      ) : error ? (
+        <button type="button" className="btn block" onClick={fetchOptions}>
+          Qayta urinish
+        </button>
+      ) : null}
     </form>
   );
 }
 
 function QuizScreen({ test, onFinish }) {
-  const { sessionId, questions } = test;
+  const { sessionId, questions, timeLimit } = test;
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState(() => questions.map(() => null));
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [deadline] = useState(() => Date.now() + timeLimit * 1000);
+  const [left, setLeft] = useState(timeLimit);
   const headingRef = useRef(null);
+  const answersRef = useRef(answers);
+  answersRef.current = answers;
 
   const question = questions[index];
   const isLast = index === questions.length - 1;
   const answered = answers[index] !== null;
-  const doneCount = answers.filter((a) => a !== null).length;
+  const expired = left <= 0;
+
+  // Tugma bosilishi va vaqt tugashi bir paytga to'g'ri kelsa ham javoblar bir marta yuboriladi
+  const sendingRef = useRef(false);
+  async function finish() {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    setLoading(true);
+    setError('');
+    try {
+      onFinish(await submitTest(sessionId, answersRef.current));
+    } catch (err) {
+      sendingRef.current = false;
+      setError(err.message);
+      setLoading(false);
+    }
+  }
+
+  // Qolgan vaqt soat bo'yicha hisoblanadi — brauzer fonda sekinlashsa ham adashmaydi
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const seconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setLeft(seconds);
+      if (seconds === 0) clearInterval(timer);
+    }, 250);
+    return () => clearInterval(timer);
+  }, [deadline]);
+
+  // Vaqt tugasa test o'zi yakunlanadi; javobsiz qolgan savollar xato hisoblanadi
+  useEffect(() => {
+    if (expired) finish();
+  }, [expired]);
 
   // Yangi savolga o'tganda fokus savol matniga ko'chadi (klaviatura va ekran o'quvchilar uchun)
   useEffect(() => {
@@ -127,20 +230,16 @@ function QuizScreen({ test, onFinish }) {
   }, [index]);
 
   function choose(option) {
+    if (expired || loading) return;
     setAnswers((prev) => prev.map((a, i) => (i === index ? option : a)));
   }
 
-  async function next() {
-    if (!isLast) return setIndex(index + 1);
-    setLoading(true);
-    setError('');
-    try {
-      onFinish(await submitTest(sessionId, answers));
-    } catch (err) {
-      setError(err.message);
-      setLoading(false);
-    }
+  function next() {
+    if (isLast) finish();
+    else setIndex(index + 1);
   }
+
+  const low = left <= 60;
 
   return (
     <div className="card">
@@ -148,20 +247,17 @@ function QuizScreen({ test, onFinish }) {
         <span className="step">
           Savol <strong>{index + 1}</strong> / {questions.length}
         </span>
-        <span className="badge">{question.section}</span>
+        <span className={`timer${low ? ' low' : ''}`} role="timer" aria-label={`Qolgan vaqt ${formatTime(left)}`}>
+          <Icon name="clock" size={18} />
+          {formatTime(left)}
+        </span>
       </div>
-      <div
-        className="progress"
-        role="progressbar"
-        aria-label="Javob berilgan savollar"
-        aria-valuemin={0}
-        aria-valuemax={questions.length}
-        aria-valuenow={doneCount}
-      >
-        <div style={{ transform: `scaleX(${doneCount / questions.length})` }} />
+      <div className="progress" aria-hidden="true">
+        <div style={{ transform: `scaleX(${left / timeLimit})` }} className={low ? 'low' : ''} />
       </div>
 
       <div className="question" key={index}>
+        <span className="badge">{question.section}</span>
         <h2 ref={headingRef} tabIndex={-1}>
           {question.text}
         </h2>
@@ -176,6 +272,7 @@ function QuizScreen({ test, onFinish }) {
                 role="radio"
                 aria-checked={selected}
                 className={`option${selected ? ' selected' : ''}`}
+                disabled={expired || loading}
                 onClick={() => choose(i)}
               >
                 <span className="letter">{selected ? <Icon name="check" size={16} /> : LETTERS[i]}</span>
@@ -186,18 +283,27 @@ function QuizScreen({ test, onFinish }) {
         </div>
       </div>
 
+      {expired ? (
+        <p className="notice" role="status">
+          <Icon name="clock" size={18} />
+          <span>Vaqt tugadi. Javoblaringiz yuborilmoqda.</span>
+        </p>
+      ) : null}
       <ErrorMessage>{error}</ErrorMessage>
-      <div className="nav">
-        <button type="button" className="btn" disabled={index === 0 || loading} onClick={() => setIndex(index - 1)}>
-          <Icon name="arrowLeft" />
-          Orqaga
-        </button>
-        <button type="button" className="btn primary" disabled={!answered || loading} onClick={next}>
+
+      {expired ? (
+        error ? (
+          <button type="button" className="btn primary block" disabled={loading} onClick={finish}>
+            Qayta yuborish
+          </button>
+        ) : null
+      ) : (
+        <button type="button" className="btn primary block" disabled={!answered || loading} onClick={next}>
           {loading ? <span className="spinner" aria-hidden="true" /> : null}
-          {loading ? 'Yuborilmoqda…' : isLast ? 'Yakunlash' : 'Keyingi'}
+          {loading ? 'Yuborilmoqda…' : isLast ? 'Yakunlash' : 'Keyingi savol'}
           {loading ? null : <Icon name={isLast ? 'check' : 'arrowRight'} />}
         </button>
-      </div>
+      )}
     </div>
   );
 }
@@ -231,7 +337,9 @@ function ResultScreen({ result, onRestart }) {
     <div className="card">
       <h1>Test yakunlandi</h1>
       <p className="lead">
-        {result.fullName} · {result.position}
+        {result.fullName}
+        <br />
+        {result.region} · {result.direction}
       </p>
 
       <div className="score">
@@ -274,12 +382,6 @@ function ResultScreen({ result, onRestart }) {
                   <Icon name="x" size={16} />
                   <span>
                     <b>Sizning javobingiz:</b> {m.yourAnswer ?? 'javob berilmagan'}
-                  </span>
-                </p>
-                <p className="answer right">
-                  <Icon name="check" size={16} />
-                  <span>
-                    <b>To'g'ri javob:</b> {m.correctAnswer}
                   </span>
                 </p>
               </li>

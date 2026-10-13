@@ -25,10 +25,10 @@ const post = (path, body) =>
 // Apps Script rejimida sessiya brauzerda saqlanadi
 let current = null;
 
-async function startViaScript(fullName, position) {
-  const { questions } = await request(`${SCRIPT_URL}?action=start`);
-  current = { fullName, position, questions, startedAt: Date.now() };
-  return { sessionId: 'script', questions };
+async function startViaScript(person) {
+  const data = await request(`${SCRIPT_URL}?action=start&direction=${encodeURIComponent(person.direction)}`);
+  current = { person, questions: data.questions, startedAt: Date.now() };
+  return { sessionId: 'script', ...data };
 }
 
 function submitViaScript(answers) {
@@ -38,16 +38,18 @@ function submitViaScript(answers) {
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({
       action: 'submit',
-      fullName: current.fullName,
-      position: current.position,
+      ...current.person,
       seconds: Math.round((Date.now() - current.startedAt) / 1000),
       answers: current.questions.map((q, i) => ({ id: q.id, answer: q.options[answers[i]] ?? null })),
     }),
   });
 }
 
-export const startTest = (fullName, position) =>
-  SCRIPT_URL ? startViaScript(fullName, position) : post('/api/start', { fullName, position });
+// { regions, directions, secondsPerQuestion }
+export const loadConfig = () => request(SCRIPT_URL ? `${SCRIPT_URL}?action=config` : '/api/config');
+
+// person: { region, lastName, firstName, middleName, direction }
+export const startTest = (person) => (SCRIPT_URL ? startViaScript(person) : post('/api/start', person));
 
 export const submitTest = (sessionId, answers) =>
   SCRIPT_URL ? submitViaScript(answers) : post('/api/submit', { sessionId, answers });

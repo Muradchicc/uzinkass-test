@@ -1,4 +1,14 @@
 {
+  "settings": {
+    "regions": [],
+    "directions": [
+      { "name": "Inkassator", "sheets": ["Xavfsizlik", "Inkassatsiya qoidalari"] },
+      { "name": "Haydovchi", "sheets": ["Xavfsizlik", "Mehnat muhofazasi"] },
+      { "name": "Barcha bo'limlar", "sheets": [] }
+    ],
+    "questionCount": 10,
+    "secondsPerQuestion": 60
+  },
   "sections": [
     {
       "title": "Xavfsizlik",
