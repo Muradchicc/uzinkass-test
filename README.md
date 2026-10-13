@@ -66,6 +66,7 @@ Nomi `_` bilan boshlanadigan listlar savol sifatida o'qilmaydi.
 | `APPS_SCRIPT_URL` | Apps Script Web App havolasi | bo'sh (fake data) |
 | `APPS_SCRIPT_TOKEN` | `Code.gs` dagi `TOKEN` | — |
 | `PORT` | Server porti | 80 |
+| `HTTPS_REDIRECT_PORT` | `https://` so'rovlarini `http://` ga yo'naltiruvchi port (0 — o'chirilgan) | 443 |
 | `QUESTION_COUNT` | Testdagi savollar soni | 10 |
 
 ## Serverni boshqa kompyuterga o'rnatish

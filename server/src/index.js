@@ -5,6 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from './config.js';
 import { sheetsEnabled } from './sheets.js';
+import { startHttpsRedirect } from './httpsRedirect.js';
 import { refreshQuestions, pickQuestions, grade, saveResult, flushPending, status } from './quiz.js';
 
 const app = express();
@@ -74,6 +75,7 @@ setInterval(() => {
 
 await refreshQuestions();
 flushPending();
+startHttpsRedirect();
 
 // 0.0.0.0 — lokal tarmoqdagi boshqa kompyuterlar ham ulana olishi uchun
 app.listen(config.port, '0.0.0.0', () => {

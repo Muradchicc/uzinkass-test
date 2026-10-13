@@ -11,6 +11,8 @@ export const config = {
   appsScriptUrl: (process.env.APPS_SCRIPT_URL ?? '').trim(),
   appsScriptToken: (process.env.APPS_SCRIPT_TOKEN ?? '').trim(),
   port: Number(process.env.PORT) || 80,
+  // https:// so'rovlari shu portda qabul qilinib, http:// ga yo'naltiriladi (0 — o'chirilgan)
+  httpsRedirectPort: Number(process.env.HTTPS_REDIRECT_PORT ?? 443),
   questionCount: Number(process.env.QUESTION_COUNT) || 10,
   dataDir: path.join(serverDir, 'data'),
   fakeDataFile: path.join(serverDir, 'fake-data.json'),

@@ -42,9 +42,9 @@ try {
     Pop-Location
 }
 
-if (-not (Get-NetFirewallRule -DisplayName $taskName -ErrorAction SilentlyContinue)) {
-    New-NetFirewallRule -DisplayName $taskName -Direction Inbound -Protocol TCP -LocalPort $port -Action Allow | Out-Null
-}
+# 443 - https:// so'rovlarini http:// ga yo'naltirish uchun
+Get-NetFirewallRule -DisplayName $taskName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+New-NetFirewallRule -DisplayName $taskName -Direction Inbound -Protocol TCP -LocalPort $port, 443 -Action Allow | Out-Null
 
 # Kompyuter yonganda server o'zi ishga tushadi (hech kim tizimga kirmagan bo'lsa ham)
 $action = New-ScheduledTaskAction -Execute (Get-Command node).Source -Argument 'server\src\index.js' -WorkingDirectory $root
