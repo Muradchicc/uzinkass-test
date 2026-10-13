@@ -10,9 +10,9 @@ npm run setup    # bir marta: kutubxonalarni o'rnatadi va frontendni yig'adi
 npm start        # serverni ishga tushiradi
 ```
 
-Server ishga tushganda konsolda `Lokal tarmoqda: http://192.168.x.x:3000` havolasi chiqadi —
+Server ishga tushganda konsolda `Lokal tarmoqda: http://192.168.x.x` havolasi chiqadi —
 lokal tarmoqdagi kompyuterlarda shu havola ochiladi. Boshqa kompyuterlardan ochilmasa,
-Windows Firewall'da 3000-portga ruxsat bering.
+Windows Firewall'da 80-portga ruxsat bering.
 
 `server/.env` bo'lmasa server `server/fake-data.json` dagi sinov savollari bilan ishlaydi.
 
@@ -65,5 +65,5 @@ Nomi `_` bilan boshlanadigan listlar savol sifatida o'qilmaydi.
 |---|---|---|
 | `APPS_SCRIPT_URL` | Apps Script Web App havolasi | bo'sh (fake data) |
 | `APPS_SCRIPT_TOKEN` | `Code.gs` dagi `TOKEN` | — |
-| `PORT` | Server porti | 3000 |
+| `PORT` | Server porti | 80 |
 | `QUESTION_COUNT` | Testdagi savollar soni | 10 |

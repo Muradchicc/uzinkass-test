@@ -10,7 +10,7 @@ if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
 export const config = {
   appsScriptUrl: (process.env.APPS_SCRIPT_URL ?? '').trim(),
   appsScriptToken: (process.env.APPS_SCRIPT_TOKEN ?? '').trim(),
-  port: Number(process.env.PORT) || 3000,
+  port: Number(process.env.PORT) || 80,
   questionCount: Number(process.env.QUESTION_COUNT) || 10,
   dataDir: path.join(serverDir, 'data'),
   fakeDataFile: path.join(serverDir, 'fake-data.json'),
