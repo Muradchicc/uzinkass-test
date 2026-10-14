@@ -1,45 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { loadConfig, startTest, submitTest } from './api.js';
+import { LangContext, useT } from './i18n.js';
+import { ErrorMessage, Icon, LangSwitch, useScript } from './common.jsx';
 import logo from './assets/logo.png';
 import logoMark from './assets/logo-mark.png';
 
 const LETTERS = ['A', 'B', 'C', 'D'];
-
-function Icon({ name, size = 20 }) {
-  const paths = {
-    check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
-    x: <path d="M6 6l12 12M18 6L6 18" />,
-    arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
-    alert: <path d="M12 8v5M12 16.5v.5M12 3l9.5 17h-19L12 3z" />,
-    clock: <path d="M12 7v5l3 2M12 3a9 9 0 100 18 9 9 0 000-18z" />,
-  };
-  return (
-    <svg
-      className="icon"
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {paths[name]}
-    </svg>
-  );
-}
-
-function ErrorMessage({ children }) {
-  if (!children) return null;
-  return (
-    <p className="error" role="alert">
-      <Icon name="alert" size={18} />
-      <span>{children}</span>
-    </p>
-  );
-}
 
 function formatTime(seconds) {
   const m = Math.floor(seconds / 60);
@@ -48,6 +14,7 @@ function formatTime(seconds) {
 }
 
 function StartScreen({ onStart }) {
+  const t = useT();
   const [options, setOptions] = useState(null);
   const [form, setForm] = useState({ region: '', lastName: '', firstName: '', middleName: '', direction: '' });
   const [error, setError] = useState('');
@@ -93,50 +60,52 @@ function StartScreen({ onStart }) {
   return (
     <form className="card" onSubmit={handleSubmit}>
       <img className="logo" src={logo} alt="Uzinkass" width="96" height="120" />
-      <h1>Bilimni sinash testi</h1>
-      <p className="lead">Testni boshlash uchun ma'lumotlaringizni to'liq kiriting.</p>
+      <h1>{t.custom(options?.texts, 'title') ?? t('title')}</h1>
+      <p className="lead">{t.custom(options?.texts, 'lead') ?? t('lead')}</p>
 
       <div className="field">
-        <label htmlFor="region">Hudud</label>
+        <label htmlFor="region">{t('region')}</label>
         <select id="region" value={form.region} onChange={set('region')} disabled={!options} required>
-          <option value="">{options ? 'Hududni tanlang' : 'Yuklanmoqda…'}</option>
+          <option value="">{options ? t('chooseRegion') : t('loading')}</option>
           {options?.regions.map((region) => (
-            <option key={region}>{region}</option>
+            <option key={region} value={region}>
+              {t.tr(region)}
+            </option>
           ))}
         </select>
       </div>
 
       <div className="field">
-        <label htmlFor="lastName">Familiya</label>
+        <label htmlFor="lastName">{t('lastName')}</label>
         <input
           id="lastName"
           value={form.lastName}
           onChange={set('lastName')}
-          placeholder="Familiyangiz"
+          placeholder={t('lastNameHint')}
           autoComplete="family-name"
           maxLength={60}
           required
         />
       </div>
       <div className="field">
-        <label htmlFor="firstName">Ism</label>
+        <label htmlFor="firstName">{t('firstName')}</label>
         <input
           id="firstName"
           value={form.firstName}
           onChange={set('firstName')}
-          placeholder="Ismingiz"
+          placeholder={t('firstNameHint')}
           autoComplete="given-name"
           maxLength={60}
           required
         />
       </div>
       <div className="field">
-        <label htmlFor="middleName">Sharif</label>
+        <label htmlFor="middleName">{t('middleName')}</label>
         <input
           id="middleName"
           value={form.middleName}
           onChange={set('middleName')}
-          placeholder="Otangizning ismi"
+          placeholder={t('middleNameHint')}
           autoComplete="additional-name"
           maxLength={60}
           required
@@ -144,32 +113,38 @@ function StartScreen({ onStart }) {
       </div>
 
       <div className="field">
-        <label htmlFor="direction">Yo'nalish</label>
+        <label htmlFor="direction">{t('direction')}</label>
         <select id="direction" value={form.direction} onChange={set('direction')} disabled={!options} required>
-          <option value="">{options ? "Yo'nalishni tanlang" : 'Yuklanmoqda…'}</option>
+          <option value="">{options ? t('chooseDirection') : t('loading')}</option>
           {options?.directions.map((direction) => (
-            <option key={direction}>{direction}</option>
+            <option key={direction} value={direction}>
+              {t.tr(direction)}
+            </option>
           ))}
         </select>
       </div>
 
       <ul className="rules">
-        <li>Har bir savolda bitta to'g'ri javob bor.</li>
-        <li>Har bir savolga {minutesPerQuestion} daqiqa hisobidan umumiy vaqt beriladi.</li>
-        <li>Vaqt tugasa test yakunlanadi, javobsiz savollar xato hisoblanadi.</li>
-        <li>Oldingi savolga qaytib, javobni o'zgartirib bo'lmaydi.</li>
+        {(t.customRules(options?.texts, minutesPerQuestion) ?? [
+          t('ruleOne'),
+          t('ruleTime', minutesPerQuestion),
+          t('ruleExpire'),
+          t('ruleNoBack'),
+        ]).map((rule) => (
+          <li key={rule}>{rule}</li>
+        ))}
       </ul>
 
       <ErrorMessage>{error}</ErrorMessage>
       {options ? (
         <button className="btn primary block" disabled={!ready || loading}>
           {loading ? <span className="spinner" aria-hidden="true" /> : null}
-          {loading ? 'Yuklanmoqda…' : 'Testni boshlash'}
+          {loading ? t('loading') : t('start')}
           {loading ? null : <Icon name="arrowRight" />}
         </button>
       ) : error ? (
         <button type="button" className="btn block" onClick={fetchOptions}>
-          Qayta urinish
+          {t('retry')}
         </button>
       ) : null}
     </form>
@@ -177,6 +152,7 @@ function StartScreen({ onStart }) {
 }
 
 function QuizScreen({ test, onFinish }) {
+  const t = useT();
   const { sessionId, questions, timeLimit } = test;
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState(() => questions.map(() => null));
@@ -245,9 +221,9 @@ function QuizScreen({ test, onFinish }) {
     <div className="card">
       <div className="progress-head">
         <span className="step">
-          Savol <strong>{index + 1}</strong> / {questions.length}
+          {t('question')} <strong>{index + 1}</strong> / {questions.length}
         </span>
-        <span className={`timer${low ? ' low' : ''}`} role="timer" aria-label={`Qolgan vaqt ${formatTime(left)}`}>
+        <span className={`timer${low ? ' low' : ''}`} role="timer" aria-label={`${t('timeLeft')} ${formatTime(left)}`}>
           <Icon name="clock" size={18} />
           {formatTime(left)}
         </span>
@@ -257,12 +233,12 @@ function QuizScreen({ test, onFinish }) {
       </div>
 
       <div className="question" key={index}>
-        <span className="badge">{question.section}</span>
+        <span className="badge">{t.tr(question.section)}</span>
         <h2 ref={headingRef} tabIndex={-1}>
-          {question.text}
+          {t.tr(question.text)}
         </h2>
 
-        <div className="options" role="radiogroup" aria-label="Javob variantlari">
+        <div className="options" role="radiogroup" aria-label={t('answerOptions')}>
           {question.options.map((option, i) => {
             const selected = answers[index] === i;
             return (
@@ -276,7 +252,7 @@ function QuizScreen({ test, onFinish }) {
                 onClick={() => choose(i)}
               >
                 <span className="letter">{selected ? <Icon name="check" size={16} /> : LETTERS[i]}</span>
-                <span className="option-text">{option}</span>
+                <span className="option-text">{t.tr(option)}</span>
               </button>
             );
           })}
@@ -286,7 +262,7 @@ function QuizScreen({ test, onFinish }) {
       {expired ? (
         <p className="notice" role="status">
           <Icon name="clock" size={18} />
-          <span>Vaqt tugadi. Javoblaringiz yuborilmoqda.</span>
+          <span>{t('timeUp')}</span>
         </p>
       ) : null}
       <ErrorMessage>{error}</ErrorMessage>
@@ -294,13 +270,13 @@ function QuizScreen({ test, onFinish }) {
       {expired ? (
         error ? (
           <button type="button" className="btn primary block" disabled={loading} onClick={finish}>
-            Qayta yuborish
+            {t('resend')}
           </button>
         ) : null
       ) : (
         <button type="button" className="btn primary block" disabled={!answered || loading} onClick={next}>
           {loading ? <span className="spinner" aria-hidden="true" /> : null}
-          {loading ? 'Yuborilmoqda…' : isLast ? 'Yakunlash' : 'Keyingi savol'}
+          {loading ? t('sending') : isLast ? t('finish') : t('next')}
           {loading ? null : <Icon name={isLast ? 'check' : 'arrowRight'} />}
         </button>
       )}
@@ -309,6 +285,7 @@ function QuizScreen({ test, onFinish }) {
 }
 
 function ScoreRing({ percent }) {
+  const t = useT();
   const radius = 52;
   const length = 2 * Math.PI * radius;
   return (
@@ -326,20 +303,21 @@ function ScoreRing({ percent }) {
         {percent}%
       </text>
       <text x="60" y="78" className="ring-label">
-        natija
+        {t('result')}
       </text>
     </svg>
   );
 }
 
 function ResultScreen({ result, onRestart }) {
+  const t = useT();
   return (
     <div className="card">
-      <h1>Test yakunlandi</h1>
+      <h1>{t('done')}</h1>
       <p className="lead">
-        {result.fullName}
+        {t.tr(result.fullName)}
         <br />
-        {result.region} · {result.direction}
+        {t.tr(result.region)} · {t.tr(result.direction)}
       </p>
 
       <div className="score">
@@ -348,16 +326,16 @@ function ResultScreen({ result, onRestart }) {
           <p className="score-value">
             {result.correct} <span>/ {result.total}</span>
           </p>
-          <p className="score-caption">to'g'ri javob</p>
+          <p className="score-caption">{t('correctAnswers')}</p>
         </div>
       </div>
 
-      <h3>Bo'limlar bo'yicha</h3>
+      <h3>{t('bySection')}</h3>
       <ul className="sections">
         {result.sections.map((s) => (
           <li key={s.section}>
             <div className="section-row">
-              <span>{s.section}</span>
+              <span>{t.tr(s.section)}</span>
               <span className="section-count">
                 {s.correct} / {s.total}
               </span>
@@ -371,17 +349,19 @@ function ResultScreen({ result, onRestart }) {
 
       {result.mistakes.length > 0 ? (
         <>
-          <h3>Xato javoblar ({result.mistakes.length})</h3>
+          <h3>
+            {t('mistakes')} ({result.mistakes.length})
+          </h3>
           <ul className="mistakes">
             {result.mistakes.map((m) => (
               <li key={m.number}>
                 <p className="mistake-q">
-                  {m.number}. {m.text}
+                  {m.number}. {t.tr(m.text)}
                 </p>
                 <p className="answer wrong">
                   <Icon name="x" size={16} />
                   <span>
-                    <b>Sizning javobingiz:</b> {m.yourAnswer ?? 'javob berilmagan'}
+                    <b>{t('yourAnswer')}</b> {m.yourAnswer == null ? t('noAnswer') : t.tr(m.yourAnswer)}
                   </span>
                 </p>
               </li>
@@ -391,12 +371,12 @@ function ResultScreen({ result, onRestart }) {
       ) : (
         <p className="all-right">
           <Icon name="check" />
-          Barcha savollarga to'g'ri javob berdingiz.
+          {t('allRight')}
         </p>
       )}
 
       <button className="btn primary block" onClick={onRestart}>
-        Bosh sahifaga qaytish
+        {t('home')}
       </button>
     </div>
   );
@@ -405,6 +385,7 @@ function ResultScreen({ result, onRestart }) {
 export default function App() {
   const [test, setTest] = useState(null);
   const [result, setResult] = useState(null);
+  const [script, setScript, t] = useScript();
 
   let screen;
   if (result) {
@@ -424,13 +405,16 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      <header className="brand">
-        <img className="brand-mark" src={logoMark} alt="" width="34" height="38" />
-        <span className="brand-name">Uzinkass</span>
-        <span className="brand-sub">Xodimlar test sinovi</span>
-      </header>
-      <main>{screen}</main>
-    </div>
+    <LangContext.Provider value={t}>
+      <div className="app">
+        <header className="brand">
+          <img className="brand-mark" src={logoMark} alt="" width="34" height="38" />
+          <span className="brand-name">Uzinkass</span>
+          <span className="brand-sub">{t('brandSub')}</span>
+          <LangSwitch script={script} onChange={setScript} />
+        </header>
+        <main>{screen}</main>
+      </div>
+    </LangContext.Provider>
   );
 }

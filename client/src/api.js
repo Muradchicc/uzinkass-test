@@ -11,7 +11,12 @@ async function request(url, init) {
     throw new Error(OFFLINE);
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || data.error) throw new Error(data.error || `Xatolik (${res.status})`);
+  if (!res.ok || data.error) {
+    const err = new Error(data.error || `Xatolik (${res.status})`);
+    // Login yoki parol noto'g'ri — admin panel kirish oynasiga qaytadi
+    err.auth = Boolean(data.auth) || res.status === 401;
+    throw err;
+  }
   return data;
 }
 
@@ -45,7 +50,7 @@ function submitViaScript(answers) {
   });
 }
 
-// { regions, directions, secondsPerQuestion }
+// { regions, directions, secondsPerQuestion, texts }
 export const loadConfig = () => request(SCRIPT_URL ? `${SCRIPT_URL}?action=config` : '/api/config');
 
 // person: { region, lastName, firstName, middleName, direction }
@@ -53,3 +58,13 @@ export const startTest = (person) => (SCRIPT_URL ? startViaScript(person) : post
 
 export const submitTest = (sessionId, answers) =>
   SCRIPT_URL ? submitViaScript(answers) : post('/api/submit', { sessionId, answers });
+
+// Admin panel: login/parol har bir so'rov bilan yuboriladi, ularni Apps Script tekshiradi
+export const adminCall = (op, creds, payload = {}) =>
+  SCRIPT_URL
+    ? request(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'admin', op, ...creds, ...payload }),
+      })
+    : post('/api/admin', { op, ...creds, ...payload });

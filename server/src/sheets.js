@@ -12,7 +12,7 @@ const norm = (value) =>
     .toLowerCase()
     .replace(/\s+/g, ' ');
 
-async function callScript(init, params = {}) {
+async function callScript(init, params = {}, { keepError = false } = {}) {
   const url = new URL(config.appsScriptUrl);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   const res = await fetch(url, { ...init, redirect: 'follow', signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -24,7 +24,7 @@ async function callScript(init, params = {}) {
     // Odatda bu Web App "Anyone" uchun ochilmaganini bildiradi (Google login sahifasi qaytadi)
     throw new Error(`Apps Script JSON qaytarmadi (HTTP ${res.status})`);
   }
-  if (data.error) throw new Error(`Apps Script: ${data.error}`);
+  if (data.error && !keepError) throw new Error(`Apps Script: ${data.error}`);
   return data;
 }
 
@@ -85,6 +85,8 @@ function normalizeSettings(raw, sections) {
     directions: directions.length ? directions : sections.map((s) => ({ name: s.title, sheets: [s.title] })),
     questionCount: Number(raw?.questionCount) || config.questionCount,
     secondsPerQuestion: Number(raw?.secondsPerQuestion) || config.secondsPerQuestion,
+    // Admin paneldan o'zgartirilgan sayt matnlari ("_Matnlar" listi)
+    texts: { lat: raw?.texts?.lat ?? {}, cyr: raw?.texts?.cyr ?? {} },
   };
 }
 
@@ -98,6 +100,16 @@ export async function fetchData() {
     .map((s) => ({ title: String(s.title), questions: parseRows(s.title, s.rows ?? []) }))
     .filter((section) => section.questions.length);
   return { sections, settings: normalizeSettings(data.settings, sections) };
+}
+
+// Admin panel so'rovlari: login/parolni Apps Script o'zi tekshiradi
+// Xato javob ({ error, auth }) o'zgarishsiz qaytariladi
+export function callAdmin(body) {
+  return callScript(
+    { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, action: 'admin' }) },
+    {},
+    { keepError: true },
+  );
 }
 
 export async function appendResultRow(row) {

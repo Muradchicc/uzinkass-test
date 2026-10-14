@@ -63,6 +63,26 @@ Jadvaldagi `_Sozlamalar` listida turadi (list bo'lmasa Apps Script uni birinchi 
 
 `Code.gs` o'zgartirilsa, **Deploy → Manage deployments → Edit → New version** qilish kerak.
 
+## Admin panel
+
+Manzil: lokal tarmoqda `http://<server>/admin`, internetda `.../admin.html`.
+Panelda: test parametrlari (savollar soni, vaqt), hududlar, yo'nalishlar va ularning listlari,
+savollarni qo'shish/tahrirlash/o'chirish, natijalarni ko'rish va Excel (CSV) ga yuklab olish,
+bosh sahifa matnlari (lotin va kirill), login/parolni o'zgartirish.
+Barcha o'zgarishlar to'g'ridan-to'g'ri Google Sheets jadvaliga yoziladi (sayt matnlari — `_Matnlar` listiga).
+
+Birinchi kirish uchun Apps Script'dagi `Token` fayliga qo'shing:
+
+```js
+const ADMIN_LOGIN = 'admin';
+const ADMIN_PASSWORD = 'kuchli-parol';
+```
+
+Paneldagi **Parol** bo'limida login/parol o'zgartirilsa, yangisi Script Properties'da (xesh ko'rinishida) saqlanadi
+va `Token` faylidagi qiymat endi ishlatilmaydi. 5 marta xato kiritilsa, kirish 15 daqiqaga yopiladi.
+Parolni unutsangiz: Apps Script → **Project Settings → Script Properties** dan `ADMIN_HASH` ni o'chiring —
+yana `Token` faylidagi parol ishlaydi.
+
 ## Natijalar
 
 - Barcha natijalar jadvalning **Natijalar** listiga yoziladi. Ustunlar: sana, hudud, F.I.SH, yo'nalish, to'g'ri javoblar, jami, foiz, bo'limlar bo'yicha, davomiyligi, manba (`Lokal tarmoq` yoki `Internet`).

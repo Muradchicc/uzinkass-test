@@ -75,6 +75,38 @@ body {
   text-align: right;
 }
 
+.lang-switch {
+  flex: none;
+  display: flex;
+  margin-left: 12px;
+  padding: 2px;
+  border: 1px solid rgba(230, 200, 119, 0.5);
+  border-radius: 8px;
+}
+
+.lang-switch button {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #d5e6e3;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--ease), color var(--ease);
+}
+
+.lang-switch button.active {
+  background: var(--gold);
+  color: #072f2d;
+}
+
+.lang-switch button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+
 main {
   flex: 1;
   width: 100%;
@@ -630,6 +662,10 @@ form.card > .btn.block:last-child {
 @media (max-width: 380px) {
   .brand-sub {
     display: none;
+  }
+
+  .lang-switch {
+    margin-left: auto;
   }
 
   .score {

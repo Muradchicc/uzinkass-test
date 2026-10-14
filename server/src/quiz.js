@@ -53,6 +53,7 @@ export function publicConfig() {
     regions: settings.regions,
     directions: settings.directions.map((d) => d.name),
     secondsPerQuestion: settings.secondsPerQuestion,
+    texts: settings.texts ?? { lat: {}, cyr: {} },
   };
 }
 

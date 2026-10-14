@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from './config.js';
-import { sheetsEnabled } from './sheets.js';
+import { sheetsEnabled, callAdmin } from './sheets.js';
 import { startHttpsRedirect, publicCertificate } from './httpsRedirect.js';
 import {
   refreshQuestions,
@@ -90,6 +90,23 @@ app.post('/api/submit', (req, res) => {
   res.json({ fullName: session.fullName, region: session.region, direction: session.direction, ...result });
 });
 
+// Jadvalni o'zgartiradigan amallardan keyin savollar va sozlamalar darhol qayta o'qiladi
+const ADMIN_WRITES = ['saveSettings', 'saveQuestion', 'deleteQuestion', 'addSheet'];
+
+app.post('/api/admin', async (req, res) => {
+  if (!sheetsEnabled) {
+    return res.status(503).json({ error: "Admin panel faqat Google Sheets ulanganda ishlaydi (server/.env)" });
+  }
+  try {
+    const data = await callAdmin(req.body ?? {});
+    if (data.error) return res.status(data.auth ? 401 : 400).json(data);
+    if (ADMIN_WRITES.includes(req.body?.op)) await refreshQuestions();
+    res.json(data);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 app.get('/uzinkass-cert.cer', (req, res) => {
   const cert = publicCertificate();
   if (!cert) return res.status(404).send('Sertifikat yaratilmagan');
@@ -97,6 +114,7 @@ app.get('/uzinkass-cert.cer', (req, res) => {
 });
 
 if (fs.existsSync(config.clientDist)) {
+  app.get('/admin', (req, res) => res.redirect('admin.html'));
   app.use(express.static(config.clientDist));
   app.use((req, res) => res.sendFile(path.join(config.clientDist, 'index.html')));
 } else {
