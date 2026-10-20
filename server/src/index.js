@@ -109,6 +109,7 @@ const ADMIN_WRITES = [
   'saveQuestion',
   'deleteQuestion',
   'addSheet',
+  'addSurvey',
   'renameSheet',
   'archiveSheet',
   'restoreSheet',

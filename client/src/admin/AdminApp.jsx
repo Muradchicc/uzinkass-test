@@ -107,7 +107,7 @@ function useSaver() {
       setBusy(false);
     }
   }
-  return { busy, error, saved, run, setSaved };
+  return { busy, error, saved, run, setSaved, setError };
 }
 
 // --- Kirish ---
@@ -775,7 +775,8 @@ function QuestionEditor({ sheet, initial, call, onDone, onCancel }) {
   );
 }
 
-function QuestionItem({ question, onEdit, onDelete }) {
+// surveyView — "So'rovnoma" bo'limida: belgida savol turi (variantli yoki yozma) ko'rsatiladi
+function QuestionItem({ question, onEdit, onDelete, surveyView = false }) {
   const t = useT();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -797,7 +798,9 @@ function QuestionItem({ question, onEdit, onDelete }) {
       <div className="q-head">
         <span className="q-row">#{question.row}</span>
         <p className="q-text">{question.text || <em>{t.tr('(matn yo\'q)')}</em>}</p>
-        {question.valid ? null : question.survey ? (
+        {surveyView && question.survey ? (
+          <span className="tag info">{t.tr(freeText ? 'Yozma' : 'Variantli')}</span>
+        ) : question.valid ? null : question.survey ? (
           <span className="tag info">{t.tr("Faqat so'rovnoma uchun")}</span>
         ) : (
           <span className="tag bad">{t.tr("To'liq emas — testga ham, so'rovnomaga ham tushmaydi")}</span>
@@ -997,6 +1000,271 @@ function QuestionsTab({ call }) {
       ) : (
         <p className="hint">{t.tr("Savollar listi yo'q. Yangi bo'lim qo'shing.")}</p>
       )}
+    </>
+  );
+}
+
+// --- So'rovnoma ---
+
+const SURVEY_QUESTION_TYPES = [
+  ['choice', 'Variantli (test)'],
+  ['text', 'Yozma'],
+];
+
+const emptySurveyQuestion = () => ({ text: '', kind: 'choice', options: ['', '', '', ''], correct: -1 });
+
+// Variantli savol — 2-4 ta variant, to'g'ri javobsiz; yozma savol — variantsiz, xodim javobni o'zi yozadi
+function SurveyQuestionEditor({ sheet, initial, call, onDone, onCancel }) {
+  const t = useT();
+  const [q, setQ] = useState(initial);
+  const saver = useSaver();
+  const setOption = (i, value) => setQ((prev) => ({ ...prev, options: prev.options.map((o, j) => (j === i ? value : o)) }));
+  const filled = q.options.filter((o) => o.trim()).length;
+  const ready = q.text.trim() && (q.kind === 'text' || filled >= 2);
+
+  async function save(event) {
+    event.preventDefault();
+    const options = q.kind === 'text' ? ['', '', '', ''] : q.options;
+    // Testdan kelgan savolning to'g'ri javob belgisi variant o'zgarmagan bo'lsa saqlanib qoladi
+    const correct = q.kind === 'choice' && q.correct >= 0 && options[q.correct]?.trim() ? q.correct : -1;
+    const ok = await saver.run(() =>
+      call('saveQuestion', { sheet, row: initial.row, original: initial.original, text: q.text, options, correct }),
+    );
+    if (ok) onDone();
+  }
+
+  return (
+    <form className="card admin-section editor" onSubmit={save}>
+      <h2>{initial.row ? `${t.tr('Savolni tahrirlash')} · #${initial.row}` : t.tr('Yangi savol')}</h2>
+      <div className="field">
+        <label htmlFor="s-text">{t.tr('Savol matni')}</label>
+        <textarea id="s-text" rows={3} value={q.text} onChange={(e) => setQ({ ...q, text: e.target.value })} required />
+      </div>
+      <fieldset className="field">
+        <legend>{t.tr('Savol turi')}</legend>
+        <div className="segmented" role="group" aria-label={t.tr('Savol turi')}>
+          {SURVEY_QUESTION_TYPES.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={q.kind === value}
+              className={q.kind === value ? 'active' : ''}
+              onClick={() => setQ({ ...q, kind: value })}
+            >
+              {t.tr(label)}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      {q.kind === 'choice' ? (
+        <fieldset className="field">
+          <legend>{t.tr('Variantlar')}</legend>
+          <p className="hint">{t.tr("Kamida ikkita variant kiriting. To'g'ri javob belgilanmaydi — xodim o'z fikrini tanlaydi.")}</p>
+          {q.options.map((option, i) => (
+            <div key={i} className="option-edit">
+              <span className="letter">{LETTERS[i]}</span>
+              <input
+                aria-label={`${t.tr('Variant')} ${LETTERS[i]}`}
+                value={option}
+                onChange={(e) => setOption(i, e.target.value)}
+              />
+            </div>
+          ))}
+        </fieldset>
+      ) : (
+        <p className="hint">{t.tr("Xodim javobni o'zi yozadi (1000 belgigacha).")}</p>
+      )}
+      <ErrorMessage>{saver.error}</ErrorMessage>
+      <div className="admin-actions">
+        <button type="button" className="btn" onClick={onCancel} disabled={saver.busy}>
+          {t.tr('Bekor qilish')}
+        </button>
+        <SaveButton busy={saver.busy} disabled={!ready || saver.busy}>
+          {t.tr('Saqlash')}
+        </SaveButton>
+      </div>
+    </form>
+  );
+}
+
+function SurveyTab({ call }) {
+  const t = useT();
+  const settings = useAdminData(call, 'settings');
+  const questions = useAdminData(call, 'questions');
+  const [selected, setSelected] = useState('');
+  const [sheet, setSheet] = useState('');
+  const [editing, setEditing] = useState(null);
+  const [actionError, setActionError] = useState('');
+  const creator = useSaver();
+
+  if ((settings.loading && !settings.data) || (questions.loading && !questions.data)) return <Loading />;
+  if (!settings.data || !questions.data) return <ErrorMessage>{settings.error || questions.error}</ErrorMessage>;
+
+  // So'rovnoma — "So'rovnoma" turidagi yo'nalish; uning savollari belgilangan bo'limlarda turadi
+  const surveys = settings.data.directions.filter((d) => d.type === 'survey');
+  const current = surveys.find((s) => s.name === selected) ?? surveys[0];
+  const sheets = current?.sheets ?? [];
+  const currentSheet = sheets.includes(sheet) ? sheet : sheets[0];
+  const sheetData = questions.data.sheets.find((s) => s.name === currentSheet);
+
+  async function addSurvey(name) {
+    const fresh = await creator.run(() => call('addSurvey', { name }));
+    if (!fresh) return false;
+    settings.setData(fresh);
+    await questions.reload();
+    setSelected(name);
+    setSheet(name);
+    setEditing(null);
+    return true;
+  }
+
+  // Boshqa amalga o'tilganda eski xato xabarlari yopiladi
+  function startEditing(value) {
+    creator.setError('');
+    setActionError('');
+    setEditing(value);
+  }
+
+  async function remove(question) {
+    setActionError('');
+    creator.setError('');
+    try {
+      await call('deleteQuestion', { sheet: currentSheet, row: question.row, original: question.text });
+      await questions.reload();
+      return true;
+    } catch (err) {
+      setActionError(err.message);
+      return false;
+    }
+  }
+
+  return (
+    <>
+      <section className="card admin-section">
+        <h2>
+          {t.tr("So'rovnomalar")} <span className="count">{surveys.length}</span>
+        </h2>
+        <p className="hint">
+          {t.tr(
+            "Yangi so'rovnoma qo'shilsa, shu nomli bo'lim (list) va «So'rovnoma» turidagi yo'nalish yaratiladi. Yo'nalishni o'chirish yoki qayta nomlash — «Sozlamalar» bo'limida.",
+          )}
+        </p>
+        {surveys.length ? (
+          <div className="toolbar">
+            <div className="field grow">
+              <label htmlFor="survey">{t.tr("So'rovnoma")}</label>
+              <select
+                id="survey"
+                value={current.name}
+                onChange={(e) => {
+                  setSelected(e.target.value);
+                  setSheet('');
+                  startEditing(null);
+                }}
+              >
+                {surveys.map((s) => (
+                  <option key={s.name} value={s.name}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {sheets.length > 1 ? (
+              <div className="field grow">
+                <label htmlFor="survey-sheet">{t.tr("Bo'lim")}</label>
+                <select
+                  id="survey-sheet"
+                  value={currentSheet}
+                  onChange={(e) => {
+                    setSheet(e.target.value);
+                    setEditing(null);
+                  }}
+                >
+                  {sheets.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+            <button type="button" className="btn" onClick={questions.reload} disabled={questions.loading}>
+              <Icon name="refresh" size={18} /> {t.tr('Yangilash')}
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={!sheetData}
+              onClick={() => startEditing(emptySurveyQuestion())}
+            >
+              <Icon name="plus" size={18} /> {t.tr("Savol qo'shish")}
+            </button>
+          </div>
+        ) : (
+          <p className="hint">{t.tr("Hali so'rovnoma yo'q. Quyida yangisini qo'shing.")}</p>
+        )}
+        <AddRow
+          placeholder="Yangi so'rovnoma nomi"
+          label="So'rovnoma qo'shish"
+          maxLength={60}
+          busy={creator.busy}
+          onAdd={addSurvey}
+        />
+        <ErrorMessage>{creator.error}</ErrorMessage>
+      </section>
+
+      {editing && sheetData ? (
+        <SurveyQuestionEditor
+          key={editing.row ?? 'new'}
+          sheet={currentSheet}
+          initial={editing}
+          call={call}
+          onCancel={() => setEditing(null)}
+          onDone={() => {
+            setEditing(null);
+            questions.reload();
+          }}
+        />
+      ) : null}
+
+      <ErrorMessage>{actionError || questions.error}</ErrorMessage>
+
+      {current ? (
+        <section className="card admin-section">
+          <h2>
+            {currentSheet ?? current.name} · {sheetData?.questions.length ?? 0} {t.tr('ta savol')}
+          </h2>
+          {!sheetData ? (
+            <p className="hint">
+              {t.tr("Bu bo'lim jadvalda yo'q (arxivlangan yoki o'chirilgan). «Sozlamalar» bo'limida yo'nalishga boshqa bo'lim belgilang.")}
+            </p>
+          ) : sheetData.questions.length ? (
+            <ul className="q-list">
+              {sheetData.questions.map((q) => (
+                <QuestionItem
+                  key={q.row}
+                  question={q}
+                  surveyView
+                  onDelete={remove}
+                  onEdit={(item) => {
+                    startEditing({
+                      row: item.row,
+                      original: item.text,
+                      text: item.text,
+                      kind: item.options.every((o) => !o) ? 'text' : 'choice',
+                      options: item.options,
+                      correct: item.correct,
+                    });
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                />
+              ))}
+            </ul>
+          ) : (
+            <p className="hint">{t.tr("Savollar yo'q. «Savol qo'shish» tugmasini bosing.")}</p>
+          )}
+        </section>
+      ) : null}
     </>
   );
 }
@@ -1415,6 +1683,7 @@ function PasswordTab({ call, creds, onChanged }) {
 const TABS = [
   ['settings', 'Sozlamalar'],
   ['questions', 'Savollar'],
+  ['survey', "So'rovnoma"],
   ['results', 'Natijalar'],
   ['texts', 'Matnlar'],
   ['password', 'Parol'],
@@ -1448,6 +1717,7 @@ export default function AdminApp() {
   if (!creds) content = <LoginScreen onLogin={login} />;
   else if (tab === 'settings') content = <SettingsTab call={call} />;
   else if (tab === 'questions') content = <QuestionsTab call={call} />;
+  else if (tab === 'survey') content = <SurveyTab call={call} />;
   else if (tab === 'results') content = <ResultsTab call={call} />;
   else if (tab === 'texts') content = <TextsTab call={call} />;
   else content = <PasswordTab call={call} creds={creds} onChanged={login} />;

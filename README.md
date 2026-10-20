@@ -83,6 +83,10 @@ javoblarini ko'rish (so'rovnoma bo'yicha savollar kesimida xulosa) va Excel (CSV
 bosh sahifa matnlari (lotin va kirill); login/parolni o'zgartirish.
 Barcha o'zgarishlar to'g'ridan-to'g'ri Google Sheets jadvaliga yoziladi (sayt matnlari — `_Matnlar` listiga).
 
+**So'rovnoma** bo'limida so'rovnoma tanlanadi yoki yangisi yaratiladi (shu nomli list va "So'rovnoma" turidagi
+yo'nalish birga yaratiladi), savollari qo'shiladi, tahrirlanadi va o'chiriladi. Savol turi: **Variantli (test)** —
+2–4 ta variant, to'g'ri javobsiz; **Yozma** — xodim javobni o'zi yozadi.
+
 Bo'lim o'chirilmaydi, balki arxivga o'tadi: list `_Arxiv <sana> <nom>` deb qayta nomlanadi, savollari jadvalda qoladi.
 Bo'lim qayta nomlanganda yo'nalishlardagi nomi ham avtomatik yangilanadi.
 

@@ -360,6 +360,10 @@ legend {
   white-space: nowrap;
 }
 
+.add-row + .error {
+  margin: 10px 0 0;
+}
+
 /* Telefonda tugmalar bitta qatorga sig'ishi uchun ixchamroq */
 @media (max-width: 640px) {
   .btn.icon-btn {

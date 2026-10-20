@@ -452,6 +452,7 @@ function adminAction(body) {
     if (body.op === 'saveQuestion') return saveQuestion(body);
     if (body.op === 'deleteQuestion') return deleteQuestion(body);
     if (body.op === 'addSheet') return addQuestionSheet(body.name);
+    if (body.op === 'addSurvey') return addSurvey(body.name);
     if (body.op === 'renameSheet') return renameQuestionSheet(body.name, body.newName);
     if (body.op === 'archiveSheet') return archiveQuestionSheet(body.name);
     if (body.op === 'restoreSheet') return restoreQuestionSheet(body.name);
@@ -666,6 +667,25 @@ function addQuestionSheet(name) {
   sheet.appendRow(['Savol', 'A', 'B', 'C', 'D', "To'g'ri javob"]);
   sheet.getRange(1, 1, 1, 6).setFontWeight('bold');
   sheet.setFrozenRows(1);
+  return adminSettings();
+}
+
+// Yangi so'rovnoma: shu nomli bo'lim (list) va unga bog'langan "So'rovnoma" turidagi yo'nalish birga yaratiladi
+function addSurvey(name) {
+  const title = clean(name);
+  const invalid = sheetNameError(title);
+  if (invalid) return { error: invalid };
+  // Sozlamalar list yaratilishidan oldin o'qiladi: aks holda standart yo'nalishlar ro'yxatiga yangi list ham tushib qoladi
+  const settings = loadSettings();
+  if (settings.directions.some(function (d) { return norm(d.name) === norm(title); })) {
+    return { error: "Bunday nomli yo'nalish allaqachon bor" };
+  }
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet(title);
+  sheet.appendRow(['Savol', 'A', 'B', 'C', 'D', "To'g'ri javob"]);
+  sheet.getRange(1, 1, 1, 6).setFontWeight('bold');
+  sheet.setFrozenRows(1);
+  settings.directions.push({ name: title, sheets: [title], type: 'survey' });
+  writeSettingsSheet(SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SETTINGS_SHEET), settings);
   return adminSettings();
 }
 
