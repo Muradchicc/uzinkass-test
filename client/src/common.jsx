@@ -14,6 +14,10 @@ export function Icon({ name, size = 20 }) {
     download: <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />,
     refresh: <path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7" />,
     logout: <path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" />,
+    arrowUp: <path d="M12 19V5M6 11l6-6 6 6" />,
+    arrowDown: <path d="M12 5v14M6 13l6 6 6-6" />,
+    archive: <path d="M3 4h18v4H3zM5 8v12h14V8M10 12h4" />,
+    undo: <path d="M9 14L4 9l5-5M4 9h11a5 5 0 010 10h-3" />,
   };
   return (
     <svg

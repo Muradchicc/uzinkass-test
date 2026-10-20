@@ -4,6 +4,9 @@ React (frontend) + Express (backend). Savollar Google Sheets'dan olinadi, har bi
 Xodim hudud, F.I.SH va yo'nalishni kiritadi; yo'nalishga biriktirilgan bo'limlardan aralash holda savollar tushadi.
 Har bir savolga 1 daqiqa hisobidan umumiy vaqt beriladi, vaqt tugasa test yakunlanadi.
 
+Yo'nalish **so'rovnoma** turida ham bo'lishi mumkin: unda to'g'ri javob yo'q, baho qo'yilmaydi,
+belgilangan bo'limlarning barcha savollari jadvaldagi tartibda, vaqt cheklovisiz beriladi.
+
 ## Ishga tushirish
 
 ```
@@ -39,17 +42,24 @@ Har bir bo'lim uchun alohida list, 1-qator — sarlavha:
 "To'g'ri javob" ustuniga `A`/`B`/`C`/`D` harfi, `1`–`4` raqami yoki to'g'ri variantning matni yoziladi.
 Nomi `_` bilan boshlanadigan listlar savol sifatida o'qilmaydi.
 
+- **Test savoli** — to'rtala variant va to'g'ri javob to'ldirilgan.
+- **So'rovnoma savoli** — to'g'ri javob shart emas: 2–4 ta variant (xodim bittasini tanlaydi) yoki
+  variantlar umuman bo'sh (xodim javobni o'zi yozadi). Bunday savollar faqat so'rovnomaga tushadi.
+- Test savoli so'rovnomaga ham tushishi mumkin (to'g'ri javob e'tiborga olinmaydi).
+
 ## Hududlar, yo'nalishlar va sozlamalar
 
 Jadvaldagi `_Sozlamalar` listida turadi (list bo'lmasa Apps Script uni birinchi murojaatda o'zi yaratadi):
 
-| A — Hududlar | B — Yo'nalishlar | C — Yo'nalish listlari | | E — Sozlama | F — Qiymat |
+| A — Hududlar | B — Yo'nalishlar | C — Yo'nalish listlari | D — Turi | E — Sozlama | F — Qiymat |
 |---|---|---|---|---|---|
-| Toshkent shahri | Inkassator | Xavfsizlik, Inkassatsiya qoidalari | | Savollar soni | 10 |
-| Andijon viloyati | Haydovchi | Xavfsizlik | | Bir savolga vaqt (soniya) | 60 |
+| Toshkent shahri | Inkassator | Xavfsizlik, Inkassatsiya qoidalari | Test | Savollar soni | 10 |
+| Andijon viloyati | Xodimlar fikri | Ish sharoiti | So'rovnoma | Bir savolga vaqt (soniya) | 60 |
 
-- **C ustuni** — shu yo'nalishdagi xodimga qaysi listlardan savol tushishi (vergul bilan). Bo'sh bo'lsa barcha listlardan tushadi.
-- Umumiy vaqt = savollar soni × bir savolga vaqt. Javobsiz qolgan savollar xato hisoblanadi.
+- **C ustuni** — shu yo'nalishdagi xodimga qaysi listlardan savol tushishi (vergul bilan). Testda bo'sh bo'lsa barcha listlardan tushadi;
+  so'rovnomaga kamida bitta list ko'rsatiladi, savollar shu listlar tartibida beriladi.
+- **D ustuni** — `Test` (yoki bo'sh) yoki `So'rovnoma`. Eski jadvallarda D bo'sh — barcha yo'nalishlar test hisoblanadi.
+- Umumiy vaqt = savollar soni × bir savolga vaqt (faqat testda). Javobsiz qolgan savollar xato hisoblanadi.
 - Ustun bo'sh qolsa standart qiymatlar ishlatiladi: 14 ta hudud, har bir list alohida yo'nalish, 10 ta savol, 60 soniya.
 - O'zgarishlar internet sahifasida darhol, lokal serverda 5 daqiqa ichida kuchga kiradi.
 
@@ -66,10 +76,15 @@ Jadvaldagi `_Sozlamalar` listida turadi (list bo'lmasa Apps Script uni birinchi 
 ## Admin panel
 
 Manzil: lokal tarmoqda `http://<server>/admin`, internetda `.../admin.html`.
-Panelda: test parametrlari (savollar soni, vaqt), hududlar, yo'nalishlar va ularning listlari,
-savollarni qo'shish/tahrirlash/o'chirish, natijalarni ko'rish va Excel (CSV) ga yuklab olish,
-bosh sahifa matnlari (lotin va kirill), login/parolni o'zgartirish.
+Panelda: test parametrlari (savollar soni, vaqt); hududlar — qo'shish, o'chirish, tartibini o'zgartirish;
+bo'limlar (listlar) — qo'shish, qayta nomlash, arxivga o'tkazish va arxivdan qaytarish; yo'nalishlar — turi
+(test yoki so'rovnoma) va listlari; savollarni qo'shish/tahrirlash/o'chirish; test natijalari va so'rovnoma
+javoblarini ko'rish (so'rovnoma bo'yicha savollar kesimida xulosa) va Excel (CSV) ga yuklab olish;
+bosh sahifa matnlari (lotin va kirill); login/parolni o'zgartirish.
 Barcha o'zgarishlar to'g'ridan-to'g'ri Google Sheets jadvaliga yoziladi (sayt matnlari — `_Matnlar` listiga).
+
+Bo'lim o'chirilmaydi, balki arxivga o'tadi: list `_Arxiv <sana> <nom>` deb qayta nomlanadi, savollari jadvalda qoladi.
+Bo'lim qayta nomlanganda yo'nalishlardagi nomi ham avtomatik yangilanadi.
 
 Birinchi kirish uchun Apps Script'dagi `Token` fayliga qo'shing:
 
@@ -93,8 +108,10 @@ yana `Token` faylidagi parol ishlaydi.
   2. Apps Script muharririda `setupFormTrigger` funksiyasini bir marta ishga tushiring.
   3. Formadagi savol sarlavhasi listdagi "Savol" matni bilan, variantlar esa A–D ustunlaridagi matn bilan aynan bir xil bo'lsin — javoblar shu bo'yicha baholanadi.
   4. F.I.SH savolining sarlavhasida "F.I.SH", lavozim savolida "Lavozim" so'zi bo'lsin.
-- Internet uzilsa natijalar `server/data/pending.json` da navbatda turadi va aloqa tiklanganda avtomatik yuboriladi.
-  Barcha natijalarning zaxira nusxasi `server/data/results.json` da saqlanadi.
+- So'rovnoma javoblari **So'rovnoma javoblari** listiga yoziladi — har bir javob alohida qator:
+  sana, hudud, F.I.SH, yo'nalish, bo'lim, savol, javob, manba.
+- Internet uzilsa natijalar va so'rovnoma javoblari `server/data/pending.json` da navbatda turadi va aloqa tiklanganda
+  avtomatik yuboriladi. Zaxira nusxalari: test natijalari — `server/data/results.json`, so'rovnomalar — `server/data/surveys.json`.
 
 ## Sozlamalar (`server/.env`)
 

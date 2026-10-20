@@ -27,22 +27,24 @@ function storeCreds(creds) {
 }
 
 // Bitta amal natijasini yuklaydi: { data, setData, error, loading, reload }
-function useAdminData(call, op) {
+// params — amalga qo'shimcha qiymatlar (masalan { kind: 'survey' }); o'zgarsa qayta yuklanadi
+function useAdminData(call, op, params) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const paramsKey = JSON.stringify(params ?? {});
 
   const reload = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      setData(await call(op));
+      setData(await call(op, JSON.parse(paramsKey)));
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [call, op]);
+  }, [call, op, paramsKey]);
 
   useEffect(() => {
     reload();
@@ -163,21 +165,284 @@ function LoginScreen({ onLogin }) {
 
 // --- Sozlamalar ---
 
+const DIRECTION_TYPES = [
+  ['test', 'Test'],
+  ['survey', "So'rovnoma"],
+];
+
+// Ro'yxat elementlari qayta tartiblanganda React ularni adashtirmasligi uchun doimiy kalit
+let nextKey = 0;
+const withKey = (item) => ({ ...item, key: ++nextKey });
+
+function toForm(data) {
+  return {
+    questionCount: String(data.questionCount),
+    secondsPerQuestion: String(data.secondsPerQuestion),
+    regions: data.regions.map((value) => withKey({ value })),
+    directions: data.directions.map((d) =>
+      withKey({ name: d.name, sheets: d.sheets, type: d.type === 'survey' ? 'survey' : 'test' }),
+    ),
+  };
+}
+
+// Elementni bir pog'ona yuqoriga (-1) yoki pastga (+1) suradi
+function move(list, index, step) {
+  const target = index + step;
+  if (target < 0 || target >= list.length) return list;
+  const copy = [...list];
+  [copy[index], copy[target]] = [copy[target], copy[index]];
+  return copy;
+}
+
+// Katta-kichik harf farqlanmaydi: "Toshkent shahri" va "toshkent shahri" — bitta nom
+function findDuplicate(names) {
+  const seen = new Set();
+  for (const name of names) {
+    const key = name.trim().toLowerCase();
+    if (seen.has(key)) return name;
+    seen.add(key);
+  }
+  return null;
+}
+
+function MoveButtons({ index, count, onMove }) {
+  const t = useT();
+  return (
+    <>
+      <button
+        type="button"
+        className="btn icon-btn"
+        disabled={index === 0}
+        onClick={() => onMove(-1)}
+        aria-label={t.tr('Yuqoriga')}
+        title={t.tr('Yuqoriga')}
+      >
+        <Icon name="arrowUp" size={18} />
+      </button>
+      <button
+        type="button"
+        className="btn icon-btn"
+        disabled={index === count - 1}
+        onClick={() => onMove(1)}
+        aria-label={t.tr('Pastga')}
+        title={t.tr('Pastga')}
+      >
+        <Icon name="arrowDown" size={18} />
+      </button>
+    </>
+  );
+}
+
+// Yangi qiymat kiritish qatori. Sozlamalar formasi ichida turadi, shuning uchun Enter formani
+// yubormasdan qiymatni qo'shadi
+function AddRow({ placeholder, label, onAdd, maxLength = 120, busy = false }) {
+  const t = useT();
+  const [value, setValue] = useState('');
+
+  async function add() {
+    const name = value.trim();
+    if (!name || busy) return;
+    if ((await onAdd(name)) !== false) setValue('');
+  }
+
+  return (
+    <div className="inline add-row">
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            add();
+          }
+        }}
+        placeholder={t.tr(placeholder)}
+        aria-label={t.tr(placeholder)}
+        maxLength={maxLength}
+      />
+      <button type="button" className="btn" disabled={!value.trim() || busy} onClick={add}>
+        {busy ? <Spinner dark /> : <Icon name="plus" size={18} />}
+        {t.tr(label)}
+      </button>
+    </div>
+  );
+}
+
+// Bo'limlar (savollar listlari) bilan amallar darhol jadvalda bajariladi
+function SectionsCard({ data, call, onChanged }) {
+  const t = useT();
+  const [editing, setEditing] = useState(null);
+  const [confirming, setConfirming] = useState('');
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+
+  async function run(key, op, payload, rename) {
+    setBusy(key);
+    setError('');
+    try {
+      onChanged(await call(op, payload), rename);
+      return true;
+    } catch (err) {
+      setError(err.message);
+      return false;
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function rename(event) {
+    event?.preventDefault();
+    const to = editing.value.trim();
+    if (!to || to === editing.name) {
+      setEditing(null);
+      return;
+    }
+    if (await run(`rename:${editing.name}`, 'renameSheet', { name: editing.name, newName: to }, { from: editing.name, to })) {
+      setEditing(null);
+    }
+  }
+
+  return (
+    <section className="card admin-section">
+      <h2>
+        {t.tr("Bo'limlar")} <span className="count">{data.sheets.length}</span>
+      </h2>
+      <p className="hint">
+        {t.tr(
+          "Har bir bo'lim — jadvaldagi alohida list. O'zgarishlar darhol saqlanadi. O'chirilgan bo'lim arxivga o'tadi: savollari jadvalda qoladi va uni qaytarish mumkin.",
+        )}
+      </p>
+      <ul className="rows">
+        {data.sheets.map((sheet) => (
+          <li key={sheet.name} className="row-edit">
+            {editing?.name === sheet.name ? (
+              <>
+                <input
+                  aria-label={t.tr("Bo'limning yangi nomi")}
+                  value={editing.value}
+                  maxLength={60}
+                  autoFocus
+                  onChange={(e) => setEditing({ ...editing, value: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') rename(e);
+                    if (e.key === 'Escape') setEditing(null);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={!editing.value.trim() || Boolean(busy)}
+                  onClick={rename}
+                >
+                  {busy ? <Spinner /> : <Icon name="check" size={18} />} {t.tr('Saqlash')}
+                </button>
+                <button type="button" className="btn" disabled={Boolean(busy)} onClick={() => setEditing(null)}>
+                  {t.tr('Bekor qilish')}
+                </button>
+              </>
+            ) : confirming === sheet.name ? (
+              <>
+                <span className="row-name">
+                  <span className="confirm-text">
+                    {t.tr(`"${sheet.name}" arxivga o'tkazilsinmi?`)}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="btn danger"
+                  disabled={Boolean(busy)}
+                  onClick={async () => {
+                    if (await run(`archive:${sheet.name}`, 'archiveSheet', { name: sheet.name })) setConfirming('');
+                  }}
+                >
+                  {busy ? <Spinner /> : <Icon name="archive" size={18} />} {t.tr('Ha, arxivga')}
+                </button>
+                <button type="button" className="btn" disabled={Boolean(busy)} onClick={() => setConfirming('')}>
+                  {t.tr("Yo'q")}
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="row-name">
+                  {t.tr(sheet.name)} <em>· {sheet.questions} {t.tr('ta savol')}</em>
+                </span>
+                <button
+                  type="button"
+                  className="btn icon-btn"
+                  aria-label={t.tr('Qayta nomlash')}
+                  title={t.tr('Qayta nomlash')}
+                  disabled={Boolean(busy)}
+                  onClick={() => {
+                    setConfirming('');
+                    setEditing({ name: sheet.name, value: sheet.name });
+                  }}
+                >
+                  <Icon name="edit" size={18} />
+                </button>
+                <button
+                  type="button"
+                  className="btn icon-btn"
+                  aria-label={t.tr("Arxivga o'tkazish")}
+                  title={t.tr("Arxivga o'tkazish")}
+                  disabled={Boolean(busy)}
+                  onClick={() => {
+                    setEditing(null);
+                    setConfirming(sheet.name);
+                  }}
+                >
+                  <Icon name="archive" size={18} />
+                </button>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+      <AddRow
+        placeholder="Yangi bo'lim nomi"
+        label="Bo'lim qo'shish"
+        maxLength={60}
+        busy={busy === 'add'}
+        onAdd={(name) => run('add', 'addSheet', { name })}
+      />
+      <ErrorMessage>{error}</ErrorMessage>
+
+      {data.archived?.length ? (
+        <>
+          <h3 className="sub-heading">{t.tr('Arxiv')}</h3>
+          <ul className="rows">
+            {data.archived.map((sheet) => (
+              <li key={sheet.name} className="row-edit archived">
+                <span className="row-name">
+                  {t.tr(sheet.title)} <em>· {sheet.questions} {t.tr('ta savol')}</em>
+                </span>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={Boolean(busy)}
+                  onClick={() => run(`restore:${sheet.name}`, 'restoreSheet', { name: sheet.name })}
+                >
+                  {busy === `restore:${sheet.name}` ? <Spinner dark /> : <Icon name="undo" size={18} />}{' '}
+                  {t.tr('Qaytarish')}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 function SettingsTab({ call }) {
   const t = useT();
   const { data, setData, error, loading } = useAdminData(call, 'settings');
   const [form, setForm] = useState(null);
   const saver = useSaver();
 
+  // Forma bir marta to'ldiriladi; bo'limlar bilan amallar saqlanmagan o'zgarishlarni o'chirmasligi kerak
   useEffect(() => {
-    if (!data) return;
-    setForm({
-      questionCount: String(data.questionCount),
-      secondsPerQuestion: String(data.secondsPerQuestion),
-      regions: data.regions.join('\n'),
-      directions: data.directions.map((d) => ({ name: d.name, sheets: d.sheets })),
-    });
-  }, [data]);
+    if (data && !form) setForm(toForm(data));
+  }, [data, form]);
 
   if (loading && !form) return <Loading />;
   if (!form) return <ErrorMessage>{error}</ErrorMessage>;
@@ -186,6 +451,8 @@ function SettingsTab({ call }) {
     saver.setSaved(false);
     setForm((prev) => ({ ...prev, ...patch }));
   };
+  const updateRegion = (index, value) =>
+    update({ regions: form.regions.map((r, i) => (i === index ? { ...r, value } : r)) });
   const updateDirection = (index, patch) =>
     update({ directions: form.directions.map((d, i) => (i === index ? { ...d, ...patch } : d)) });
   const toggleSheet = (index, sheet) => {
@@ -195,30 +462,62 @@ function SettingsTab({ call }) {
     });
   };
 
+  // Bo'lim qayta nomlansa, saqlanmagan formadagi yo'nalishlar ham yangi nomga o'tadi
+  function sectionsChanged(fresh, rename) {
+    setData((prev) => ({ ...prev, sheets: fresh.sheets, archived: fresh.archived }));
+    if (rename) {
+      setForm((prev) => ({
+        ...prev,
+        directions: prev.directions.map((d) => ({
+          ...d,
+          sheets: d.sheets.map((s) => (s === rename.from ? rename.to : s)),
+        })),
+      }));
+    }
+  }
+
   // Jadvalda yo'q bo'lgan, lekin yo'nalishga yozilgan listlar ham ko'rsatiladi
   const sheetNames = [...new Set([...data.sheets.map((s) => s.name), ...form.directions.flatMap((d) => d.sheets)])];
   const questionsIn = Object.fromEntries(data.sheets.map((s) => [s.name, s.questions]));
 
   async function save(event) {
     event.preventDefault();
-    const fresh = await saver.run(() =>
-      call('saveSettings', {
+    const regions = form.regions.map((r) => r.value.trim()).filter(Boolean);
+    const directions = form.directions
+      .map(({ name, sheets, type }) => ({ name: name.trim(), sheets, type }))
+      .filter((d) => d.name);
+    const fresh = await saver.run(() => {
+      const region = findDuplicate(regions);
+      if (region) throw new Error(`Hudud takrorlangan: ${region}`);
+      const direction = findDuplicate(directions.map((d) => d.name));
+      if (direction) throw new Error(`Yo'nalish takrorlangan: ${direction}`);
+      const survey = directions.find((d) => d.type === 'survey' && !d.sheets.length);
+      if (survey) throw new Error(`"${survey.name}" so'rovnomasi uchun kamida bitta bo'limni belgilang`);
+      return call('saveSettings', {
         settings: {
           questionCount: form.questionCount,
           secondsPerQuestion: form.secondsPerQuestion,
-          regions: form.regions.split('\n').map((r) => r.trim()).filter(Boolean),
-          directions: form.directions,
+          regions,
+          directions,
           texts: data.texts,
         },
-      }),
-    );
-    if (fresh) setData(fresh);
+      });
+    });
+    if (fresh) {
+      setData(fresh);
+      setForm(toForm(fresh));
+    }
   }
 
   return (
     <form onSubmit={save}>
       <section className="card admin-section">
         <h2>{t.tr('Test parametrlari')}</h2>
+        <p className="hint">
+          {t.tr(
+            "Savollar soni va vaqt faqat «Test» turidagi yo'nalishlarga tegishli. So'rovnomada belgilangan bo'limlarning barcha savollari vaqt cheklovisiz beriladi.",
+          )}
+        </p>
         <div className="grid-2">
           <div className="field">
             <label htmlFor="questionCount">{t.tr('Savollar soni')}</label>
@@ -253,30 +552,81 @@ function SettingsTab({ call }) {
       </section>
 
       <section className="card admin-section">
-        <h2>{t.tr('Hududlar')}</h2>
-        <p className="hint">{t.tr('Har qatorda bitta hudud.')}</p>
-        <textarea
-          aria-label={t.tr('Hududlar')}
-          rows={Math.min(16, Math.max(6, form.regions.split('\n').length + 1))}
-          value={form.regions}
-          onChange={(e) => update({ regions: e.target.value })}
+        <h2>
+          {t.tr('Hududlar')} <span className="count">{form.regions.length}</span>
+        </h2>
+        <ul className="rows">
+          {form.regions.map((region, index) => (
+            <li key={region.key} className="row-edit">
+              <input
+                aria-label={`${t.tr('Hudud')} ${index + 1}`}
+                value={region.value}
+                maxLength={120}
+                onChange={(e) => updateRegion(index, e.target.value)}
+              />
+              <MoveButtons
+                index={index}
+                count={form.regions.length}
+                onMove={(step) => update({ regions: move(form.regions, index, step) })}
+              />
+              <button
+                type="button"
+                className="btn icon-btn"
+                aria-label={t.tr("Hududni o'chirish")}
+                title={t.tr("Hududni o'chirish")}
+                onClick={() => update({ regions: form.regions.filter((_, i) => i !== index) })}
+              >
+                <Icon name="trash" size={18} />
+              </button>
+            </li>
+          ))}
+        </ul>
+        <AddRow
+          placeholder="Yangi hudud nomi"
+          label="Hudud qo'shish"
+          onAdd={(value) => update({ regions: [...form.regions, withKey({ value })] })}
         />
       </section>
 
+      <SectionsCard data={data} call={call} onChanged={sectionsChanged} />
+
       <section className="card admin-section">
-        <h2>{t.tr("Yo'nalishlar")}</h2>
+        <h2>
+          {t.tr("Yo'nalishlar")} <span className="count">{form.directions.length}</span>
+        </h2>
         <p className="hint">
-          {t.tr("Har bir yo'nalishga savol tushadigan bo'limlarni belgilang. Hech biri belgilanmasa — barcha bo'limlardan savol tushadi.")}
+          {t.tr(
+            "Har bir yo'nalishning turini tanlang va savol tushadigan bo'limlarni belgilang. Testda hech bir bo'lim belgilanmasa — barcha bo'limlardan savol tushadi; so'rovnomaga kamida bitta bo'lim belgilanadi.",
+          )}
         </p>
         <ul className="directions">
           {form.directions.map((direction, index) => (
-            <li key={index} className="direction">
+            <li key={direction.key} className={`direction${direction.type === 'survey' ? ' survey' : ''}`}>
               <div className="direction-head">
                 <input
                   aria-label={t.tr("Yo'nalish nomi")}
                   placeholder={t.tr("Yo'nalish nomi")}
                   value={direction.name}
+                  maxLength={120}
                   onChange={(e) => updateDirection(index, { name: e.target.value })}
+                />
+                <div className="segmented" role="group" aria-label={t.tr("Yo'nalish turi")}>
+                  {DIRECTION_TYPES.map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={direction.type === value}
+                      className={direction.type === value ? 'active' : ''}
+                      onClick={() => updateDirection(index, { type: value })}
+                    >
+                      {t.tr(label)}
+                    </button>
+                  ))}
+                </div>
+                <MoveButtons
+                  index={index}
+                  count={form.directions.length}
+                  onMove={(step) => update({ directions: move(form.directions, index, step) })}
                 />
                 <button
                   type="button"
@@ -288,6 +638,13 @@ function SettingsTab({ call }) {
                   <Icon name="trash" size={18} />
                 </button>
               </div>
+              {direction.type === 'survey' ? (
+                <p className="hint direction-note">
+                  {t.tr(
+                    "So'rovnoma: belgilangan bo'limlarning barcha savollari tartib bilan beriladi, to'g'ri javob hisoblanmaydi. Javoblar «So'rovnoma javoblari» listiga yoziladi.",
+                  )}
+                </p>
+              ) : null}
               <div className="chips">
                 {sheetNames.map((sheet) => (
                   <label key={sheet} className={`chip${direction.sheets.includes(sheet) ? ' on' : ''}`}>
@@ -307,7 +664,7 @@ function SettingsTab({ call }) {
         <button
           type="button"
           className="btn"
-          onClick={() => update({ directions: [...form.directions, { name: '', sheets: [] }] })}
+          onClick={() => update({ directions: [...form.directions, withKey({ name: '', sheets: [], type: 'test' })] })}
         >
           <Icon name="plus" size={18} /> {t.tr("Yo'nalish qo'shish")}
         </button>
@@ -331,7 +688,20 @@ function QuestionEditor({ sheet, initial, call, onDone, onCancel }) {
   const [q, setQ] = useState(initial);
   const saver = useSaver();
   const setOption = (i, value) => setQ((prev) => ({ ...prev, options: prev.options.map((o, j) => (j === i ? value : o)) }));
-  const ready = q.text.trim() && q.options.every((o) => o.trim()) && q.correct >= 0;
+  const filled = q.options.filter((o) => o.trim()).length;
+  const correctOk = q.correct < 0 || Boolean(q.options[q.correct]?.trim());
+  const ready = q.text.trim() && filled !== 1 && correctOk;
+  // Test uchun 4 ta variant va to'g'ri javob kerak; qolgan holatlarda savol faqat so'rovnomaga tushadi
+  const kind =
+    filled === 4 && q.correct >= 0
+      ? "Testga ham, so'rovnomaga ham tushadi."
+      : filled === 0
+        ? "Faqat so'rovnoma uchun: xodim javobni o'zi yozadi."
+        : filled === 1
+          ? "Kamida ikkita variant kiriting yoki hammasini bo'sh qoldiring."
+          : !correctOk
+            ? "To'g'ri javob bo'sh variantda belgilangan."
+            : "Faqat so'rovnoma uchun: testga 4 ta variant va to'g'ri javob kerak.";
 
   async function save(event) {
     event.preventDefault();
@@ -356,7 +726,12 @@ function QuestionEditor({ sheet, initial, call, onDone, onCancel }) {
         <textarea id="q-text" rows={3} value={q.text} onChange={(e) => setQ({ ...q, text: e.target.value })} required />
       </div>
       <fieldset className="field">
-        <legend>{t.tr("Variantlar (to'g'ri javobni belgilang)")}</legend>
+        <legend>{t.tr('Variantlar')}</legend>
+        <p className="hint">
+          {t.tr(
+            "Test savoli: to'rtala variant va to'g'ri javob. So'rovnoma savoli: 2–4 ta variant to'g'ri javobsiz yoki variantlarsiz (erkin javob).",
+          )}
+        </p>
         {q.options.map((option, i) => (
           <div key={i} className={`option-edit${q.correct === i ? ' correct' : ''}`}>
             <label className="option-radio" title={t.tr("To'g'ri javob")}>
@@ -373,10 +748,19 @@ function QuestionEditor({ sheet, initial, call, onDone, onCancel }) {
               aria-label={`${t.tr('Variant')} ${LETTERS[i]}`}
               value={option}
               onChange={(e) => setOption(i, e.target.value)}
-              required
             />
           </div>
         ))}
+        <div className="editor-status">
+          <span className={`hint${ready ? '' : ' bad'}`} role="status">
+            {t.tr(kind)}
+          </span>
+          {q.correct >= 0 ? (
+            <button type="button" className="btn small" onClick={() => setQ({ ...q, correct: -1 })}>
+              {t.tr("To'g'ri javob belgisini olib tashlash")}
+            </button>
+          ) : null}
+        </div>
       </fieldset>
       <ErrorMessage>{saver.error}</ErrorMessage>
       <div className="admin-actions">
@@ -405,21 +789,35 @@ function QuestionItem({ question, onEdit, onDelete }) {
     }
   }
 
+  const unusable = !question.valid && !question.survey;
+  const freeText = question.options.every((o) => !o);
+
   return (
-    <li className={`q-item${question.valid ? '' : ' invalid'}`}>
+    <li className={`q-item${unusable ? ' invalid' : ''}`}>
       <div className="q-head">
         <span className="q-row">#{question.row}</span>
         <p className="q-text">{question.text || <em>{t.tr('(matn yo\'q)')}</em>}</p>
-        {question.valid ? null : <span className="tag bad">{t.tr("To'liq emas — testga tushmaydi")}</span>}
+        {question.valid ? null : question.survey ? (
+          <span className="tag info">{t.tr("Faqat so'rovnoma uchun")}</span>
+        ) : (
+          <span className="tag bad">{t.tr("To'liq emas — testga ham, so'rovnomaga ham tushmaydi")}</span>
+        )}
       </div>
-      <ol className="q-options">
-        {question.options.map((option, i) => (
-          <li key={i} className={question.correct === i ? 'correct' : ''}>
-            <span className="letter">{question.correct === i ? <Icon name="check" size={14} /> : LETTERS[i]}</span>
-            <span>{option || <em>—</em>}</span>
-          </li>
-        ))}
-      </ol>
+      {freeText ? (
+        <p className="hint">{t.tr('Variantsiz — xodim javobni o\'zi yozadi')}</p>
+      ) : (
+        <ol className="q-options">
+          {question.options.map((option, i) =>
+            // So'rovnoma savolidagi bo'sh variantlar ko'rsatilmaydi
+            !option && !question.valid && question.survey ? null : (
+              <li key={i} className={question.correct === i ? 'correct' : ''}>
+                <span className="letter">{question.correct === i ? <Icon name="check" size={14} /> : LETTERS[i]}</span>
+                <span>{option || <em>—</em>}</span>
+              </li>
+            ),
+          )}
+        </ol>
+      )}
       <div className="q-actions">
         {confirming ? (
           <>
@@ -610,14 +1008,21 @@ function percentOf(row) {
   return Number.isFinite(n) ? n : null;
 }
 
-function downloadCsv(header, rows) {
+// Test natijalarida son ustunlari o'ngga tekislanadi, foiz rangda; so'rovnoma javoblari — oddiy matn
+function cellClass(survey, row, column) {
+  if (survey) return column === 5 || column === 6 ? 'wrap' : '';
+  if (column === 6) return `num ${percentOf(row) >= 70 ? 'ok' : 'low'}`;
+  return column >= 4 && column <= 5 ? 'num' : '';
+}
+
+function downloadCsv(header, rows, name) {
   // Excel o'zbek/rus sozlamalarida ";" ajratuvchini va BOM'ni kutadi
   const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const csv = [header, ...rows].map((r) => r.map(cell).join(';')).join('\r\n');
   const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
   const a = document.createElement('a');
   a.href = url;
-  a.download = `natijalar-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `${name}-${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.append(a);
   a.click();
   a.remove();
@@ -625,13 +1030,103 @@ function downloadCsv(header, rows) {
 }
 
 const SHOW_LIMIT = 300;
+const SUMMARY_ANSWERS = 8;
+
+const RESULT_KINDS = [
+  ['test', 'Test natijalari'],
+  ['survey', "So'rovnoma javoblari"],
+];
+
+// So'rovnoma javoblari ustunlari: Sana | Hudud | F.I.SH | Yo'nalish | Bo'lim | Savol | Javob | Manba.
+// Har bir savol bo'yicha javoblar sanab chiqiladi (ko'pidan kamiga)
+function summarizeSurvey(rows) {
+  const byQuestion = new Map();
+  for (const row of rows) {
+    const key = `${row[4]}\u0000${row[5]}`;
+    let item = byQuestion.get(key);
+    if (!item) {
+      item = { section: row[4], text: row[5], total: 0, counts: new Map() };
+      byQuestion.set(key, item);
+    }
+    item.total++;
+    item.counts.set(row[6], (item.counts.get(row[6]) ?? 0) + 1);
+  }
+  return [...byQuestion.values()].map((item) => ({
+    ...item,
+    answers: [...item.counts.entries()].sort((a, b) => b[1] - a[1]),
+  }));
+}
+
+function SurveySummary({ rows }) {
+  const t = useT();
+  const questions = summarizeSurvey(rows);
+  if (!questions.length) return null;
+  return (
+    <section className="card admin-section">
+      <h2>{t.tr("Savollar bo'yicha xulosa")}</h2>
+      <ul className="summary">
+        {questions.map((q) => (
+          <li key={`${q.section}\u0000${q.text}`}>
+            <span className="badge">{t.tr(q.section)}</span>
+            <p className="q-text">{q.text}</p>
+            <ul className="summary-answers">
+              {q.answers.slice(0, SUMMARY_ANSWERS).map(([answer, count]) => (
+                <li key={answer}>
+                  <div className="section-row">
+                    <span>{answer}</span>
+                    <span className="section-count">
+                      {count} · {Math.round((count / q.total) * 100)}%
+                    </span>
+                  </div>
+                  <div className="bar">
+                    <div style={{ transform: `scaleX(${count / q.total})` }} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {q.answers.length > SUMMARY_ANSWERS ? (
+              <p className="hint">
+                {t.tr(`Yana ${q.answers.length - SUMMARY_ANSWERS} xil javob — to'liq ro'yxat jadvalda va CSV faylda.`)}
+              </p>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 function ResultsTab({ call }) {
   const t = useT();
-  const { data, error, loading, reload } = useAdminData(call, 'results');
+  const [kind, setKind] = useState('test');
+
+  const kindSwitch = (
+    <div className="segmented wide" role="group" aria-label={t.tr('Natijalar turi')}>
+      {RESULT_KINDS.map(([value, label]) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={kind === value}
+          className={kind === value ? 'active' : ''}
+          onClick={() => setKind(value)}
+        >
+          {t.tr(label)}
+        </button>
+      ))}
+    </div>
+  );
+
+  // key — turi almashganda eski jadval yangi ustunlar bilan aralashib ko'rinmasligi uchun
+  return <ResultsView key={kind} call={call} kind={kind} kindSwitch={kindSwitch} />;
+}
+
+function ResultsView({ call, kind, kindSwitch }) {
+  const t = useT();
+  const { data, error, loading, reload } = useAdminData(call, 'results', { kind });
   const [region, setRegion] = useState('');
   const [direction, setDirection] = useState('');
   const [search, setSearch] = useState('');
+  const survey = kind === 'survey';
 
   // Eng yangi natijalar yuqorida
   const rows = useMemo(() => [...(data?.rows ?? [])].reverse(), [data]);
@@ -643,15 +1138,32 @@ function ResultsTab({ call }) {
       (!direction || r[3] === direction) &&
       (!needle || String(r[2]).toLowerCase().includes(needle)),
   );
-  const percents = filtered.map(percentOf).filter((n) => n !== null);
+  const percents = survey ? [] : filtered.map(percentOf).filter((n) => n !== null);
   const average = percents.length ? Math.round(percents.reduce((a, b) => a + b, 0) / percents.length) : null;
+  // So'rovnomada bitta ishtirokchi — bir vaqtda yuborilgan bir xil F.I.SH dagi qatorlar
+  const participants = survey ? new Set(filtered.map((r) => `${r[0]}\u0000${r[2]}`)).size : 0;
 
-  if (loading && !data) return <Loading />;
-  if (!data) return <ErrorMessage>{error}</ErrorMessage>;
+  if (loading && !data) {
+    return (
+      <>
+        <section className="card admin-section">{kindSwitch}</section>
+        <Loading />
+      </>
+    );
+  }
+  if (!data) {
+    return (
+      <>
+        <section className="card admin-section">{kindSwitch}</section>
+        <ErrorMessage>{error}</ErrorMessage>
+      </>
+    );
+  }
 
   return (
     <>
       <section className="card admin-section">
+        <div className="toolbar">{kindSwitch}</div>
         <div className="toolbar">
           <div className="field grow">
             <label htmlFor="f-region">{t.tr('Hudud')}</label>
@@ -677,14 +1189,25 @@ function ResultsTab({ call }) {
           </div>
         </div>
         <div className="toolbar">
-          <div className="stats">
-            <span>
-              {t.tr('Natijalar')}: <b>{filtered.length}</b>
-            </span>
-            <span>
-              {t.tr("O'rtacha natija")}: <b>{average === null ? '—' : `${average}%`}</b>
-            </span>
-          </div>
+          {survey ? (
+            <div className="stats">
+              <span>
+                {t.tr('Ishtirokchilar')}: <b>{participants}</b>
+              </span>
+              <span>
+                {t.tr('Javoblar')}: <b>{filtered.length}</b>
+              </span>
+            </div>
+          ) : (
+            <div className="stats">
+              <span>
+                {t.tr('Natijalar')}: <b>{filtered.length}</b>
+              </span>
+              <span>
+                {t.tr("O'rtacha natija")}: <b>{average === null ? '—' : `${average}%`}</b>
+              </span>
+            </div>
+          )}
           <button type="button" className="btn" onClick={reload} disabled={loading}>
             <Icon name="refresh" size={18} /> {t.tr('Yangilash')}
           </button>
@@ -692,7 +1215,7 @@ function ResultsTab({ call }) {
             type="button"
             className="btn primary"
             disabled={!filtered.length}
-            onClick={() => downloadCsv(data.header, filtered)}
+            onClick={() => downloadCsv(data.header, filtered, survey ? 'sorovnoma' : 'natijalar')}
           >
             <Icon name="download" size={18} /> {t.tr('Excel (CSV) yuklab olish')}
           </button>
@@ -716,7 +1239,7 @@ function ResultsTab({ call }) {
                 {filtered.slice(0, SHOW_LIMIT).map((row, i) => (
                   <tr key={i}>
                     {row.map((value, j) => (
-                      <td key={j} className={j === 6 ? `num ${percentOf(row) >= 70 ? 'ok' : 'low'}` : j >= 4 && j <= 5 ? 'num' : ''}>
+                      <td key={j} className={cellClass(survey, row, j)}>
                         {value}
                       </td>
                     ))}
@@ -734,6 +1257,8 @@ function ResultsTab({ call }) {
           </p>
         ) : null}
       </section>
+
+      {survey ? <SurveySummary rows={filtered} /> : null}
     </>
   );
 }

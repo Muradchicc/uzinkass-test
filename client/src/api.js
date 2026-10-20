@@ -45,12 +45,16 @@ function submitViaScript(answers) {
       action: 'submit',
       ...current.person,
       seconds: Math.round((Date.now() - current.startedAt) / 1000),
-      answers: current.questions.map((q, i) => ({ id: q.id, answer: q.options[answers[i]] ?? null })),
+      // Variant raqami variant matniga aylantiriladi; so'rovnomadagi erkin javob matni o'zgarishsiz
+      answers: current.questions.map((q, i) => ({
+        id: q.id,
+        answer: typeof answers[i] === 'string' ? answers[i] : (q.options[answers[i]] ?? null),
+      })),
     }),
   });
 }
 
-// { regions, directions, secondsPerQuestion, texts }
+// { regions, directions, surveys, secondsPerQuestion, texts }
 export const loadConfig = () => request(SCRIPT_URL ? `${SCRIPT_URL}?action=config` : '/api/config');
 
 // person: { region, lastName, firstName, middleName, direction }

@@ -59,11 +59,14 @@ function parseRows(title, rows) {
     if (!text && options.every((o) => !o)) return;
 
     const correctIndex = resolveAnswer(row[aCol], options);
-    if (!text || options.some((o) => !o) || correctIndex < 0) {
-      console.warn(`[savollar] "${title}" listi, ${rowNumber}-qator o'tkazib yuborildi (to'liq emas yoki to'g'ri javob aniqlanmadi)`);
+    // Test savoli: to'rtala variant va to'g'ri javob. So'rovnoma savoli: 2-4 ta variant yoki variantsiz (erkin javob)
+    const test = Boolean(text) && options.every(Boolean) && correctIndex >= 0 && Boolean(options[correctIndex]);
+    const survey = Boolean(text) && options.filter(Boolean).length !== 1;
+    if (!test && !survey) {
+      console.warn(`[savollar] "${title}" listi, ${rowNumber}-qator o'tkazib yuborildi (to'liq emas)`);
       return;
     }
-    questions.push({ id: `${title}#${rowNumber}`, text, options, correctIndex });
+    questions.push({ id: `${title}#${rowNumber}`, text, options, correctIndex: test ? correctIndex : -1, test, survey });
   });
   return questions;
 }
@@ -77,12 +80,16 @@ const clean = (value) =>
 function normalizeSettings(raw, sections) {
   const regions = (raw?.regions ?? []).map(clean).filter(Boolean);
   const directions = (raw?.directions ?? [])
-    .map((d) => ({ name: clean(d?.name), sheets: (d?.sheets ?? []).map(clean).filter(Boolean) }))
+    .map((d) => ({
+      name: clean(d?.name),
+      sheets: (d?.sheets ?? []).map(clean).filter(Boolean),
+      type: d?.type === 'survey' ? 'survey' : 'test',
+    }))
     .filter((d) => d.name);
   return {
     regions: regions.length ? regions : DEFAULT_REGIONS,
-    // Sozlanmagan bo'lsa har bir savollar listi alohida yo'nalish hisoblanadi
-    directions: directions.length ? directions : sections.map((s) => ({ name: s.title, sheets: [s.title] })),
+    // Sozlanmagan bo'lsa har bir savollar listi alohida yo'nalish (test) hisoblanadi
+    directions: directions.length ? directions : sections.map((s) => ({ name: s.title, sheets: [s.title], type: 'test' })),
     questionCount: Number(raw?.questionCount) || config.questionCount,
     secondsPerQuestion: Number(raw?.secondsPerQuestion) || config.secondsPerQuestion,
     // Admin paneldan o'zgartirilgan sayt matnlari ("_Matnlar" listi)
@@ -118,5 +125,14 @@ export async function appendResultRow(row) {
     // text/plain — Apps Script'ga CORS/preflight'siz oddiy so'rov sifatida boradi
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ action: 'result', token: config.appsScriptToken, row }),
+  });
+}
+
+// Bitta so'rovnomaning barcha javoblari ("So'rovnoma javoblari" listiga, har bir javob — qator)
+export async function appendSurveyRows(rows) {
+  await callScript({
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'survey', token: config.appsScriptToken, rows }),
   });
 }

@@ -43,6 +43,13 @@ const TEXTS = {
     noAnswer: 'javob berilmagan',
     allRight: "Barcha savollarga to'g'ri javob berdingiz.",
     home: 'Bosh sahifaga qaytish',
+    surveyTag: "so'rovnoma",
+    startSurvey: "So'rovnomani boshlash",
+    surveyRuleAll: "So'rovnomada to'g'ri yoki noto'g'ri javob yo'q — o'z fikringizni belgilang.",
+    surveyRuleNoTime: 'Vaqt cheklanmagan.',
+    answerPlaceholder: 'Javobingizni yozing',
+    surveyDone: "So'rovnoma yakunlandi",
+    surveyThanks: (n) => `Rahmat! ${n} ta savolga javobingiz qabul qilindi.`,
   },
   cyr: {
     brandSub: 'Ходимлар тест синови',
@@ -82,6 +89,13 @@ const TEXTS = {
     noAnswer: 'жавоб берилмаган',
     allRight: 'Барча саволларга тўғри жавоб бердингиз.',
     home: 'Бош саҳифага қайтиш',
+    surveyTag: 'сўровнома',
+    startSurvey: 'Сўровномани бошлаш',
+    surveyRuleAll: 'Сўровномада тўғри ёки нотўғри жавоб йўқ — ўз фикрингизни белгиланг.',
+    surveyRuleNoTime: 'Вақт чекланмаган.',
+    answerPlaceholder: 'Жавобингизни ёзинг',
+    surveyDone: 'Сўровнома якунланди',
+    surveyThanks: (n) => `Раҳмат! ${n} та саволга жавобингиз қабул қилинди.`,
   },
 };
 

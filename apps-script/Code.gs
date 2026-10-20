@@ -10,6 +10,9 @@
  *
  * Hududlar, yo'nalishlar va test sozlamalari "_Sozlamalar" listida turadi
  * (list bo'lmasa birinchi murojaatda o'zi yaratiladi).
+ *
+ * Yo'nalish turi: Test (to'g'ri javobli, baholanadi) yoki So'rovnoma (baholanmaydi,
+ * javoblar "So'rovnoma javoblari" listiga yoziladi).
  */
 
 // TOKEN alohida Token.gs faylida turadi (u GitHub'ga yuklanmaydi):
@@ -29,6 +32,16 @@ const RESULT_HEADER = [
   'Sana va vaqt', 'Hudud', 'F.I.SH', "Yo'nalish", "To'g'ri javoblar", 'Jami savollar',
   'Foiz (%)', "Bo'limlar bo'yicha", 'Davomiyligi', 'Manba',
 ];
+
+// So'rovnoma javoblari: har bir javob — alohida qator
+const SURVEY_SHEET = "So'rovnoma javoblari";
+const SURVEY_HEADER = ['Sana va vaqt', 'Hudud', 'F.I.SH', "Yo'nalish", "Bo'lim", 'Savol', 'Javob', 'Manba'];
+const MAX_SURVEY_QUESTIONS = 200;
+
+// Admin paneldan arxivlangan bo'limlar shu nom bilan boshlanadi va savol sifatida o'qilmaydi
+const ARCHIVE_PREFIX = '_Arxiv ';
+const ARCHIVE_PATTERN = /^_Arxiv \d{4}-\d{2}-\d{2} \d{2}\.\d{2} /;
+const SHEET_NAME_MAX = 60;
 
 // "_Sozlamalar" listi bo'lmaganda yoki ustuni bo'sh bo'lganda ishlatiladigan qiymatlar
 const DEFAULT_REGIONS = [
@@ -65,6 +78,12 @@ function doPost(e) {
   if (body.action === 'admin') return json(adminAction(body));
 
   if (body.token !== TOKEN) return json({ error: "Token noto'g'ri" });
+  if (body.action === 'survey' && Array.isArray(body.rows)) {
+    const broken = body.rows.some(function (row) { return !Array.isArray(row) || row.length !== SURVEY_HEADER.length; });
+    if (broken) return json({ error: 'Server eski versiyada — uni yangilang' });
+    appendSurveyRows(body.rows);
+    return json({ ok: true });
+  }
   if (body.action !== 'result' || !Array.isArray(body.row)) return json({ error: "Noma'lum amal" });
   // Yangilanmagan server eski tartibdagi qator yuborsa, ustunlar aralashib ketmasligi uchun
   if (body.row.length !== RESULT_HEADER.length) return json({ error: 'Server eski versiyada — uni yangilang' });
@@ -79,6 +98,8 @@ function publicConfig() {
   return {
     regions: settings.regions,
     directions: settings.directions.map(function (d) { return d.name; }),
+    // So'rovnoma turidagi yo'nalishlar (qolganlari — test)
+    surveys: settings.directions.filter(isSurvey).map(function (d) { return d.name; }),
     secondsPerQuestion: settings.secondsPerQuestion,
     texts: settings.texts,
   };
@@ -89,11 +110,12 @@ function startTest(directionName) {
   const settings = loadSettings();
   const direction = findDirection(settings, directionName);
   if (!direction) return { error: "Yo'nalish topilmadi" };
+  if (isSurvey(direction)) return startSurvey(direction);
 
   const pools = {};
   const names = [];
   shuffle(loadQuestions()).forEach(function (q) {
-    if (!inDirection(direction, q.section)) return;
+    if (!isTestQuestion(q) || !inDirection(direction, q.section)) return;
     if (!pools[q.section]) {
       pools[q.section] = [];
       names.push(q.section);
@@ -114,6 +136,7 @@ function startTest(directionName) {
   }
 
   return {
+    mode: 'test',
     timeLimit: picked.length * settings.secondsPerQuestion,
     questions: shuffle(picked).map(function (q) {
       return { id: q.id, section: q.section, text: q.text, options: shuffle(q.options) };
@@ -121,14 +144,42 @@ function startTest(directionName) {
   };
 }
 
+/** So'rovnoma: yo'nalish listlaridagi barcha savollar jadvaldagi tartibda, vaqt cheklovisiz. */
+function startSurvey(direction) {
+  const questions = surveyQuestions(direction).slice(0, MAX_SURVEY_QUESTIONS);
+  if (!questions.length) return { error: "Bu yo'nalish uchun savollar topilmadi" };
+  return {
+    mode: 'survey',
+    timeLimit: 0,
+    questions: questions.map(function (q) {
+      return { id: q.id, section: q.section, text: q.text, options: filledOptions(q) };
+    }),
+  };
+}
+
+// Listlar yo'nalishda ko'rsatilgan tartibda, har bir list ichida — qatorlar tartibida
+function surveyQuestions(direction) {
+  const order = direction.sheets.map(norm);
+  return loadQuestions()
+    .filter(function (q) { return isSurveyQuestion(q) && inDirection(direction, q.section); })
+    .map(function (q, i) { return { q: q, i: i }; })
+    .sort(function (a, b) {
+      return order.indexOf(norm(a.q.section)) - order.indexOf(norm(b.q.section)) || a.i - b.i;
+    })
+    .map(function (item) { return item.q; });
+}
+
 /** Internetdagi sahifadan kelgan javoblarni baholab, "Natijalar" listiga yozadi. */
 function submitTest(body) {
   const settings = loadSettings();
   const person = readPerson(body, settings);
   if (person.error) return person;
+  if (isSurvey(person.directionInfo)) return submitSurvey(body, person);
 
   const byId = {};
-  loadQuestions().forEach(function (q) { byId[q.id] = q; });
+  loadQuestions().forEach(function (q) {
+    if (isTestQuestion(q)) byId[q.id] = q;
+  });
 
   const stats = {};
   const order = [];
@@ -180,9 +231,44 @@ function submitTest(body) {
   ]);
 
   return {
+    mode: 'test',
     fullName: person.fullName, region: person.region, direction: person.direction,
     correct: correct, total: total, percent: percent, sections: sections, mistakes: mistakes,
   };
+}
+
+/** So'rovnoma javoblarini "So'rovnoma javoblari" listiga yozadi (har bir javob — alohida qator). */
+function submitSurvey(body, person) {
+  const byId = {};
+  surveyQuestions(person.directionInfo).forEach(function (q) { byId[q.id] = q; });
+
+  const rows = [];
+  const seen = {};
+  const time = now();
+  (Array.isArray(body.answers) ? body.answers : []).slice(0, MAX_SURVEY_QUESTIONS).forEach(function (item) {
+    const q = item && byId[item.id];
+    if (!q || seen[q.id]) return;
+    seen[q.id] = true;
+    const answer = surveyAnswer(q, item.answer);
+    if (!answer) return;
+    rows.push([time, person.region, person.fullName, person.direction, q.section, q.text, answer, 'Internet']);
+  });
+  if (!rows.length) return { error: "Javoblar topilmadi. So'rovnomani qaytadan boshlang." };
+
+  appendSurveyRows(rows);
+  return {
+    mode: 'survey',
+    fullName: person.fullName, region: person.region, direction: person.direction,
+    answered: rows.length, total: Object.keys(byId).length,
+  };
+}
+
+// Variantli savolda faqat mavjud variant qabul qilinadi, variantsizda — xodim yozgan matn
+function surveyAnswer(q, raw) {
+  const options = filledOptions(q);
+  if (!options.length) return cleanText(raw, 1000);
+  const wanted = norm(raw);
+  return options.filter(function (o) { return norm(o) === wanted; })[0] || '';
 }
 
 function readPerson(body, settings) {
@@ -192,12 +278,24 @@ function readPerson(body, settings) {
   if (settings.regions.indexOf(region) === -1) return { error: 'Hududni tanlang' };
   const direction = findDirection(settings, body.direction);
   if (!direction) return { error: "Yo'nalishni tanlang" };
-  return { region: region, fullName: parts.join(' '), direction: direction.name };
+  return { region: region, fullName: parts.join(' '), direction: direction.name, directionInfo: direction };
 }
 
 function findDirection(settings, name) {
   const wanted = clean(name);
   return settings.directions.filter(function (d) { return d.name === wanted; })[0] || null;
+}
+
+function isSurvey(direction) {
+  return Boolean(direction) && direction.type === 'survey';
+}
+
+// "_Sozlamalar" D ustunidagi qiymat: "So'rovnoma" (yoki kirill/rus yozuvida) — so'rovnoma, qolgani — test
+function parseDirectionType(value) {
+  const v = norm(value).replace(/[ʻʼ‘’`]/g, "'");
+  return v.indexOf("so'rov") === 0 || v.indexOf('сўров') === 0 || v.indexOf('опрос') === 0 || v === 'survey'
+    ? 'survey'
+    : 'test';
 }
 
 // Listlari ko'rsatilmagan yo'nalishga barcha listlardan savol tushadi
@@ -207,7 +305,8 @@ function inDirection(direction, section) {
 
 /**
  * "_Sozlamalar" listini o'qiydi:
- *   A — Hududlar | B — Yo'nalishlar | C — yo'nalish listlari (vergul bilan) | E — Sozlama | F — Qiymat
+ *   A — Hududlar | B — Yo'nalishlar | C — yo'nalish listlari (vergul bilan) | D — yo'nalish turi
+ *   (bo'sh yoki "Test" — test, "So'rovnoma" — so'rovnoma) | E — Sozlama | F — Qiymat
  */
 function loadSettings() {
   const book = SpreadsheetApp.getActiveSpreadsheet();
@@ -222,6 +321,7 @@ function loadSettings() {
       directions.push({
         name: clean(row[1]),
         sheets: String(row[2] || '').split(/[;,]/).map(clean).filter(Boolean),
+        type: parseDirectionType(row[3]),
       });
     }
     if (clean(row[4])) values[norm(row[4])] = row[5];
@@ -245,7 +345,7 @@ function loadSettings() {
 // Sozlanmagan bo'lsa har bir savollar listi alohida yo'nalish hisoblanadi
 function defaultDirections() {
   return questionSheets().map(function (sheet) {
-    return { name: sheet.getName(), sheets: [sheet.getName()] };
+    return { name: sheet.getName(), sheets: [sheet.getName()], type: 'test' };
   });
 }
 
@@ -271,7 +371,8 @@ function createSettingsSheet(book) {
 
 function writeSettingsSheet(sheet, settings) {
   const rows = [[
-    'Hududlar', "Yo'nalishlar", "Yo'nalish listlari (vergul bilan; bo'sh — barcha listlar)", '', 'Sozlama', 'Qiymat',
+    'Hududlar', "Yo'nalishlar", "Yo'nalish listlari (vergul bilan; bo'sh — barcha listlar)",
+    "Turi (Test / So'rovnoma)", 'Sozlama', 'Qiymat',
   ]];
   const height = Math.max(settings.regions.length, settings.directions.length, 2);
   for (let i = 0; i < height; i++) {
@@ -280,7 +381,7 @@ function writeSettingsSheet(sheet, settings) {
       settings.regions[i] || '',
       direction ? direction.name : '',
       direction ? direction.sheets.join(', ') : '',
-      '',
+      direction ? (isSurvey(direction) ? "So'rovnoma" : 'Test') : '',
       ['Savollar soni', 'Bir savolga vaqt (soniya)'][i] || '',
       [settings.questionCount, settings.secondsPerQuestion][i] || '',
     ]);
@@ -339,7 +440,7 @@ function adminAction(body) {
 
   if (body.op === 'login') return { ok: true };
   if (body.op === 'settings') return adminSettings();
-  if (body.op === 'results') return adminResults();
+  if (body.op === 'results') return adminResults(body.kind);
   if (body.op === 'questions') return adminQuestions();
   if (body.op === 'changePassword') return changePassword(body);
 
@@ -351,6 +452,9 @@ function adminAction(body) {
     if (body.op === 'saveQuestion') return saveQuestion(body);
     if (body.op === 'deleteQuestion') return deleteQuestion(body);
     if (body.op === 'addSheet') return addQuestionSheet(body.name);
+    if (body.op === 'renameSheet') return renameQuestionSheet(body.name, body.newName);
+    if (body.op === 'archiveSheet') return archiveQuestionSheet(body.name);
+    if (body.op === 'restoreSheet') return restoreQuestionSheet(body.name);
   } finally {
     lock.releaseLock();
   }
@@ -406,22 +510,47 @@ function adminSettings() {
   settings.sheets = questionSheets().map(function (sheet) {
     return { name: sheet.getName(), questions: Math.max(0, sheet.getLastRow() - 1) };
   });
+  settings.archived = SpreadsheetApp.getActiveSpreadsheet()
+    .getSheets()
+    .filter(function (sheet) { return ARCHIVE_PATTERN.test(sheet.getName()); })
+    .map(function (sheet) {
+      return { name: sheet.getName(), title: sheet.getName().replace(ARCHIVE_PATTERN, ''), questions: Math.max(0, sheet.getLastRow() - 1) };
+    });
   return settings;
+}
+
+// Takrorlangan nom bo'lsa xato matnini, bo'lmasa null qaytaradi (katta-kichik harf farqlanmaydi)
+function duplicateError(names, label) {
+  const seen = {};
+  for (let i = 0; i < names.length; i++) {
+    const key = norm(names[i]);
+    if (seen[key]) return label + ' takrorlangan: ' + names[i];
+    seen[key] = true;
+  }
+  return null;
 }
 
 function saveSettings(input) {
   const regions = (Array.isArray(input.regions) ? input.regions : []).map(clean).filter(Boolean);
   if (!regions.length) return { error: "Kamida bitta hudud kiriting" };
+  const regionDup = duplicateError(regions, 'Hudud');
+  if (regionDup) return { error: regionDup };
 
   const directions = (Array.isArray(input.directions) ? input.directions : [])
     .map(function (d) {
       return {
         name: clean(d && d.name),
         sheets: (d && Array.isArray(d.sheets) ? d.sheets : []).map(clean).filter(Boolean),
+        type: d && d.type === 'survey' ? 'survey' : 'test',
       };
     })
     .filter(function (d) { return d.name; });
   if (!directions.length) return { error: "Kamida bitta yo'nalish kiriting" };
+  const directionDup = duplicateError(directions.map(function (d) { return d.name; }), "Yo'nalish");
+  if (directionDup) return { error: directionDup };
+  // So'rovnomaga barcha listlardagi (test) savollar tushib qolmasligi uchun bo'limlar aniq ko'rsatiladi
+  const emptySurvey = directions.filter(function (d) { return isSurvey(d) && !d.sheets.length; })[0];
+  if (emptySurvey) return { error: '"' + emptySurvey.name + "\" so'rovnomasi uchun kamida bitta bo'limni belgilang" };
 
   const questionCount = parseInt(input.questionCount, 10);
   if (!(questionCount >= 1 && questionCount <= 200)) return { error: "Savollar soni 1 dan 200 gacha bo'lsin" };
@@ -442,23 +571,23 @@ function saveSettings(input) {
   return adminSettings();
 }
 
-// Barcha savollar listlari; to'liq bo'lmagan qatorlar ham ko'rsatiladi (valid: false), admin ularni tuzatsin
+// Barcha savollar listlari; to'liq bo'lmagan qatorlar ham ko'rsatiladi, admin ularni tuzatsin.
+// valid — testga tushadi, survey — so'rovnomaga tushadi (to'g'ri javob shart emas)
 function adminQuestions() {
   return {
     sheets: questionSheets().map(function (sheet) {
       const questions = [];
       sheet.getDataRange().getDisplayValues().forEach(function (row, i) {
         if (i === 0) return;
-        const text = String(row[0]).trim();
-        const options = row.slice(1, 5).map(function (o) { return String(o).trim(); });
-        if (!text && options.every(function (o) { return !o; })) return;
-        const correct = resolveAnswer(row[5], options);
+        const q = parseQuestionRow(row);
+        if (!q.text && q.options.every(function (o) { return !o; })) return;
         questions.push({
           row: i + 1,
-          text: text,
-          options: options,
-          correct: correct === null ? -1 : options.indexOf(correct),
-          valid: Boolean(text) && correct !== null && options.every(function (o) { return o; }),
+          text: q.text,
+          options: q.options,
+          correct: q.correct === null ? -1 : q.options.indexOf(q.correct),
+          valid: isTestQuestion(q),
+          survey: isSurveyQuestion(q),
         });
       });
       return { name: sheet.getName(), questions: questions };
@@ -475,13 +604,19 @@ function saveQuestion(body) {
   const sheet = findQuestionSheet(body.sheet);
   if (!sheet) return { error: "Bo'lim topilmadi" };
   const text = cleanText(body.text, 1000);
-  const options = (Array.isArray(body.options) ? body.options : []).slice(0, 4).map(function (o) { return cleanText(o, 500); });
-  const correct = Number(body.correct);
+  const options = [0, 1, 2, 3].map(function (i) {
+    return cleanText(Array.isArray(body.options) ? body.options[i] : '', 500);
+  });
+  const filled = options.filter(function (o) { return o; }).length;
+  const correct = body.correct === null || body.correct === undefined || body.correct === '' ? -1 : Number(body.correct);
   if (!text) return { error: 'Savol matnini kiriting' };
-  if (options.length !== 4 || options.some(function (o) { return !o; })) return { error: "To'rtala variantni to'ldiring" };
-  if (!(correct >= 0 && correct <= 3)) return { error: "To'g'ri javobni belgilang" };
+  // Test savoli: 4 ta variant + to'g'ri javob. So'rovnoma savoli: 2-4 ta variant yoki variantsiz (erkin javob)
+  if (filled === 1) return { error: "Kamida ikkita variant kiriting yoki variantlarni bo'sh qoldiring (erkin javob)" };
+  if (correct !== -1 && !(correct >= 0 && correct <= 3 && options[correct])) {
+    return { error: "To'g'ri javob bo'sh variantda belgilangan" };
+  }
 
-  const values = [[text].concat(options, [LETTERS[correct]]).map(safeCell)];
+  const values = [[text].concat(options, [correct === -1 ? '' : LETTERS[correct]]).map(safeCell)];
   if (body.row) {
     const stale = checkRow(sheet, body.row, body.original);
     if (stale) return stale;
@@ -512,25 +647,79 @@ function checkRow(sheet, row, original) {
   return null;
 }
 
+// Yangi yoki qayta nomlanayotgan bo'lim nomini tekshiradi; xato bo'lsa matnini qaytaradi
+function sheetNameError(title) {
+  if (!title) return "Bo'lim nomini kiriting";
+  if (title.length > SHEET_NAME_MAX) return "Bo'lim nomi " + SHEET_NAME_MAX + ' ta belgidan oshmasin';
+  if (title.charAt(0) === '_' || title === RESULTS_SHEET || title === SURVEY_SHEET || EXCLUDE_SHEETS.indexOf(title) !== -1) {
+    return "Bu nomdan foydalanib bo'lmaydi";
+  }
+  if (SpreadsheetApp.getActiveSpreadsheet().getSheetByName(title)) return 'Bunday nomli list allaqachon bor';
+  return null;
+}
+
 function addQuestionSheet(name) {
   const title = clean(name);
-  if (!title) return { error: "Bo'lim nomini kiriting" };
-  if (title.charAt(0) === '_' || title === RESULTS_SHEET || EXCLUDE_SHEETS.indexOf(title) !== -1) {
-    return { error: "Bu nomdan foydalanib bo'lmaydi" };
-  }
-  const book = SpreadsheetApp.getActiveSpreadsheet();
-  if (book.getSheetByName(title)) return { error: "Bunday nomli list allaqachon bor" };
-  const sheet = book.insertSheet(title);
+  const invalid = sheetNameError(title);
+  if (invalid) return { error: invalid };
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet(title);
   sheet.appendRow(['Savol', 'A', 'B', 'C', 'D', "To'g'ri javob"]);
   sheet.getRange(1, 1, 1, 6).setFontWeight('bold');
   sheet.setFrozenRows(1);
-  return { ok: true };
+  return adminSettings();
 }
 
-function adminResults() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RESULTS_SHEET);
-  if (!sheet || sheet.getLastRow() < 2) return { header: RESULT_HEADER, rows: [] };
-  const values = sheet.getRange(1, 1, sheet.getLastRow(), RESULT_HEADER.length).getDisplayValues();
+// Yo'nalishlardagi bo'lim nomi ham yangilanadi, aks holda yo'nalish eski nomli bo'limni qidirib qoladi
+function renameQuestionSheet(name, newName) {
+  const sheet = findQuestionSheet(name);
+  if (!sheet) return { error: "Bo'lim topilmadi. Ro'yxatni yangilang." };
+  const title = clean(newName);
+  if (title === sheet.getName()) return adminSettings();
+  const invalid = norm(title) === norm(sheet.getName()) ? null : sheetNameError(title);
+  if (invalid) return { error: invalid };
+
+  const oldName = sheet.getName();
+  const settings = loadSettings();
+  sheet.setName(title);
+  let changed = false;
+  settings.directions.forEach(function (d) {
+    d.sheets = d.sheets.map(function (s) {
+      if (norm(s) !== norm(oldName)) return s;
+      changed = true;
+      return title;
+    });
+  });
+  if (changed) writeSettingsSheet(SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SETTINGS_SHEET), settings);
+  return adminSettings();
+}
+
+// Bo'lim o'chirilmaydi: "_Arxiv <sana> <nom>" deb qayta nomlanadi va savol sifatida o'qilmaydi
+function archiveQuestionSheet(name) {
+  const sheet = findQuestionSheet(name);
+  if (!sheet) return { error: "Bo'lim topilmadi. Ro'yxatni yangilang." };
+  const stamp = Utilities.formatDate(new Date(), 'Asia/Tashkent', 'yyyy-MM-dd HH.mm');
+  // List nomi 100 belgidan oshmasligi kerak
+  sheet.setName((ARCHIVE_PREFIX + stamp + ' ' + sheet.getName()).slice(0, 100));
+  return adminSettings();
+}
+
+function restoreQuestionSheet(name) {
+  const wanted = String(name == null ? '' : name);
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(wanted);
+  if (!sheet || !ARCHIVE_PATTERN.test(wanted)) return { error: "Arxivdagi bo'lim topilmadi. Ro'yxatni yangilang." };
+  const title = wanted.replace(ARCHIVE_PATTERN, '');
+  const invalid = sheetNameError(title);
+  if (invalid) return { error: invalid === 'Bunday nomli list allaqachon bor' ? '"' + title + "\" nomli bo'lim allaqachon bor — avval uni qayta nomlang" : invalid };
+  sheet.setName(title);
+  return adminSettings();
+}
+
+function adminResults(kind) {
+  const survey = kind === 'survey';
+  const header = survey ? SURVEY_HEADER : RESULT_HEADER;
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(survey ? SURVEY_SHEET : RESULTS_SHEET);
+  if (!sheet || sheet.getLastRow() < 2) return { header: header, rows: [] };
+  const values = sheet.getRange(1, 1, sheet.getLastRow(), header.length).getDisplayValues();
   return { header: values[0], rows: values.slice(1) };
 }
 
@@ -555,7 +744,7 @@ function setupFormTrigger() {
 function onFormSubmit(e) {
   const bank = {};
   loadQuestions().forEach(function (q) {
-    if (!bank[norm(q.text)]) bank[norm(q.text)] = q;
+    if (isTestQuestion(q) && !bank[norm(q.text)]) bank[norm(q.text)] = q;
   });
 
   const stats = {};
@@ -604,7 +793,7 @@ function onFormSubmit(e) {
 }
 
 function questionSheets() {
-  const skipped = [RESULTS_SHEET].concat(EXCLUDE_SHEETS);
+  const skipped = [RESULTS_SHEET, SURVEY_SHEET].concat(EXCLUDE_SHEETS);
   return SpreadsheetApp.getActiveSpreadsheet()
     .getSheets()
     .filter(function (sheet) {
@@ -614,21 +803,42 @@ function questionSheets() {
 }
 
 // Ustunlar: Savol | A | B | C | D | To'g'ri javob (1-qator — sarlavha)
-// `correct` — to'g'ri variantning matni
+// `correct` — to'g'ri variantning matni (bo'lmasa null). Test va so'rovnoma savollari birga qaytadi,
+// kerakligini isTestQuestion / isSurveyQuestion bilan ajratib olinadi
 function loadQuestions() {
   const list = [];
   questionSheets().forEach(function (sheet) {
     const name = sheet.getName();
     sheet.getDataRange().getDisplayValues().forEach(function (row, i) {
       if (i === 0) return;
-      const text = String(row[0]).trim();
-      const options = row.slice(1, 5).map(function (o) { return String(o).trim(); });
-      const correct = resolveAnswer(row[5], options);
-      if (!text || correct === null || options.some(function (o) { return !o; })) return;
-      list.push({ id: name + '#' + (i + 1), section: name, text: text, options: options, correct: correct });
+      const q = parseQuestionRow(row);
+      if (!isSurveyQuestion(q)) return;
+      q.id = name + '#' + (i + 1);
+      q.section = name;
+      list.push(q);
     });
   });
   return list;
+}
+
+function parseQuestionRow(row) {
+  const options = row.slice(1, 5).map(function (o) { return String(o == null ? '' : o).trim(); });
+  while (options.length < 4) options.push('');
+  return { text: String(row[0] == null ? '' : row[0]).trim(), options: options, correct: resolveAnswer(row[5], options) };
+}
+
+function filledOptions(q) {
+  return q.options.filter(function (o) { return o; });
+}
+
+// Test savoli: to'rtala variant va to'g'ri javob bor
+function isTestQuestion(q) {
+  return Boolean(q.text) && q.correct !== null && q.options.every(function (o) { return o; });
+}
+
+// So'rovnoma savoli: 2-4 ta variant yoki umuman variantsiz (xodim javobni o'zi yozadi)
+function isSurveyQuestion(q) {
+  return Boolean(q.text) && filledOptions(q).length !== 1;
 }
 
 // To'g'ri javob: variant matni, A/B/C/D harfi yoki 1-4 raqami bo'lishi mumkin
@@ -665,6 +875,28 @@ function appendResult(row) {
       sheet.appendRow(RESULT_HEADER);
     }
     sheet.appendRow(row);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function appendSurveyRows(rows) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const book = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = book.getSheetByName(SURVEY_SHEET);
+    if (!sheet) {
+      sheet = book.insertSheet(SURVEY_SHEET);
+      sheet.appendRow(SURVEY_HEADER);
+      sheet.getRange(1, 1, 1, SURVEY_HEADER.length).setFontWeight('bold');
+      sheet.setFrozenRows(1);
+    } else if (sheet.getLastRow() === 0) {
+      sheet.appendRow(SURVEY_HEADER);
+    }
+    // Xodim yozgan javob "=" bilan boshlansa formula bo'lib qolmasin
+    const values = rows.map(function (row) { return row.map(safeCell); });
+    sheet.getRange(sheet.getLastRow() + 1, 1, values.length, SURVEY_HEADER.length).setValues(values);
   } finally {
     lock.releaseLock();
   }

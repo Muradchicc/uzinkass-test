@@ -56,6 +56,17 @@ function StartScreen({ onStart }) {
   }
 
   const minutesPerQuestion = options ? Math.round((options.secondsPerQuestion / 60) * 10) / 10 : 1;
+  const surveys = options?.surveys ?? [];
+  const isSurvey = surveys.includes(form.direction);
+  // Admin paneldagi qoidalar test uchun yozilgan, so'rovnomada o'z qoidalari ko'rsatiladi
+  const rules = isSurvey
+    ? [t('surveyRuleAll'), t('surveyRuleNoTime'), t('ruleNoBack')]
+    : (t.customRules(options?.texts, minutesPerQuestion) ?? [
+        t('ruleOne'),
+        t('ruleTime', minutesPerQuestion),
+        t('ruleExpire'),
+        t('ruleNoBack'),
+      ]);
 
   return (
     <form className="card" onSubmit={handleSubmit}>
@@ -119,18 +130,14 @@ function StartScreen({ onStart }) {
           {options?.directions.map((direction) => (
             <option key={direction} value={direction}>
               {t.tr(direction)}
+              {surveys.includes(direction) ? ` (${t('surveyTag')})` : ''}
             </option>
           ))}
         </select>
       </div>
 
       <ul className="rules">
-        {(t.customRules(options?.texts, minutesPerQuestion) ?? [
-          t('ruleOne'),
-          t('ruleTime', minutesPerQuestion),
-          t('ruleExpire'),
-          t('ruleNoBack'),
-        ]).map((rule) => (
+        {rules.map((rule) => (
           <li key={rule}>{rule}</li>
         ))}
       </ul>
@@ -139,7 +146,7 @@ function StartScreen({ onStart }) {
       {options ? (
         <button className="btn primary block" disabled={!ready || loading}>
           {loading ? <span className="spinner" aria-hidden="true" /> : null}
-          {loading ? t('loading') : t('start')}
+          {loading ? t('loading') : isSurvey ? t('startSurvey') : t('start')}
           {loading ? null : <Icon name="arrowRight" />}
         </button>
       ) : error ? (
@@ -154,6 +161,8 @@ function StartScreen({ onStart }) {
 function QuizScreen({ test, onFinish }) {
   const t = useT();
   const { sessionId, questions, timeLimit } = test;
+  // So'rovnomada vaqt cheklanmaydi (timeLimit = 0)
+  const timed = timeLimit > 0;
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState(() => questions.map(() => null));
   const [error, setError] = useState('');
@@ -165,9 +174,11 @@ function QuizScreen({ test, onFinish }) {
   answersRef.current = answers;
 
   const question = questions[index];
+  // Variantsiz savol (faqat so'rovnomada) — xodim javobni o'zi yozadi
+  const freeText = !question.options.length;
   const isLast = index === questions.length - 1;
-  const answered = answers[index] !== null;
-  const expired = left <= 0;
+  const answered = freeText ? Boolean(answers[index]?.trim()) : answers[index] !== null;
+  const expired = timed && left <= 0;
 
   // Tugma bosilishi va vaqt tugashi bir paytga to'g'ri kelsa ham javoblar bir marta yuboriladi
   const sendingRef = useRef(false);
@@ -187,13 +198,14 @@ function QuizScreen({ test, onFinish }) {
 
   // Qolgan vaqt soat bo'yicha hisoblanadi — brauzer fonda sekinlashsa ham adashmaydi
   useEffect(() => {
+    if (!timed) return undefined;
     const timer = setInterval(() => {
       const seconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
       setLeft(seconds);
       if (seconds === 0) clearInterval(timer);
     }, 250);
     return () => clearInterval(timer);
-  }, [deadline]);
+  }, [deadline, timed]);
 
   // Vaqt tugasa test o'zi yakunlanadi; javobsiz qolgan savollar xato hisoblanadi
   useEffect(() => {
@@ -215,7 +227,7 @@ function QuizScreen({ test, onFinish }) {
     else setIndex(index + 1);
   }
 
-  const low = left <= 60;
+  const low = timed && left <= 60;
 
   return (
     <div className="card">
@@ -223,13 +235,19 @@ function QuizScreen({ test, onFinish }) {
         <span className="step">
           {t('question')} <strong>{index + 1}</strong> / {questions.length}
         </span>
-        <span className={`timer${low ? ' low' : ''}`} role="timer" aria-label={`${t('timeLeft')} ${formatTime(left)}`}>
-          <Icon name="clock" size={18} />
-          {formatTime(left)}
-        </span>
+        {timed ? (
+          <span className={`timer${low ? ' low' : ''}`} role="timer" aria-label={`${t('timeLeft')} ${formatTime(left)}`}>
+            <Icon name="clock" size={18} />
+            {formatTime(left)}
+          </span>
+        ) : null}
       </div>
       <div className="progress" aria-hidden="true">
-        <div style={{ transform: `scaleX(${left / timeLimit})` }} className={low ? 'low' : ''} />
+        {/* Testda — qolgan vaqt, so'rovnomada — o'tilgan savollar */}
+        <div
+          style={{ transform: `scaleX(${timed ? left / timeLimit : (index + 1) / questions.length})` }}
+          className={low ? 'low' : ''}
+        />
       </div>
 
       <div className="question" key={index}>
@@ -238,25 +256,38 @@ function QuizScreen({ test, onFinish }) {
           {t.tr(question.text)}
         </h2>
 
-        <div className="options" role="radiogroup" aria-label={t('answerOptions')}>
-          {question.options.map((option, i) => {
-            const selected = answers[index] === i;
-            return (
-              <button
-                key={i}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                className={`option${selected ? ' selected' : ''}`}
-                disabled={expired || loading}
-                onClick={() => choose(i)}
-              >
-                <span className="letter">{selected ? <Icon name="check" size={16} /> : LETTERS[i]}</span>
-                <span className="option-text">{t.tr(option)}</span>
-              </button>
-            );
-          })}
-        </div>
+        {freeText ? (
+          <textarea
+            className="answer-input"
+            rows={4}
+            maxLength={1000}
+            aria-label={t('answerPlaceholder')}
+            placeholder={t('answerPlaceholder')}
+            value={answers[index] ?? ''}
+            disabled={loading}
+            onChange={(e) => choose(e.target.value)}
+          />
+        ) : (
+          <div className="options" role="radiogroup" aria-label={t('answerOptions')}>
+            {question.options.map((option, i) => {
+              const selected = answers[index] === i;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  className={`option${selected ? ' selected' : ''}`}
+                  disabled={expired || loading}
+                  onClick={() => choose(i)}
+                >
+                  <span className="letter">{selected ? <Icon name="check" size={16} /> : LETTERS[i]}</span>
+                  <span className="option-text">{t.tr(option)}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {expired ? (
@@ -309,8 +340,30 @@ function ScoreRing({ percent }) {
   );
 }
 
+function SurveyDoneScreen({ result, onRestart }) {
+  const t = useT();
+  return (
+    <div className="card">
+      <h1>{t('surveyDone')}</h1>
+      <p className="lead">
+        {t.tr(result.fullName)}
+        <br />
+        {t.tr(result.region)} · {t.tr(result.direction)}
+      </p>
+      <p className="all-right">
+        <Icon name="check" />
+        {t('surveyThanks', result.answered)}
+      </p>
+      <button className="btn primary block" onClick={onRestart}>
+        {t('home')}
+      </button>
+    </div>
+  );
+}
+
 function ResultScreen({ result, onRestart }) {
   const t = useT();
+  if (result.mode === 'survey') return <SurveyDoneScreen result={result} onRestart={onRestart} />;
   return (
     <div className="card">
       <h1>{t('done')}</h1>

@@ -14,6 +14,8 @@ import {
   pickQuestions,
   grade,
   saveResult,
+  collectSurvey,
+  saveSurvey,
   flushPending,
   status,
 } from './quiz.js';
@@ -51,7 +53,7 @@ app.post('/api/start', (req, res) => {
   const direction = findDirection(clean(req.body?.direction, 120));
   if (!direction) return res.status(400).json({ error: "Yo'nalishni tanlang" });
 
-  const { questions, timeLimit } = pickQuestions(direction);
+  const { mode, questions, timeLimit } = pickQuestions(direction);
   if (!questions.length) {
     return res.status(503).json({ error: "Bu yo'nalish uchun savollar topilmadi" });
   }
@@ -60,6 +62,7 @@ app.post('/api/start', (req, res) => {
   // Cloudflare tunnel orqali kelgan so'rovlarda cf-ray sarlavhasi bo'ladi
   const source = req.headers['cf-ray'] || req.headers['cf-connecting-ip'] ? 'Internet' : 'Lokal tarmoq';
   sessions.set(sessionId, {
+    mode,
     region,
     fullName: names.join(' '),
     direction: direction.name,
@@ -71,6 +74,7 @@ app.post('/api/start', (req, res) => {
   // To'g'ri javoblar brauzerga yuborilmaydi
   res.json({
     sessionId,
+    mode,
     timeLimit,
     questions: questions.map(({ section, text, options }) => ({ section, text, options })),
   });
@@ -82,16 +86,33 @@ app.post('/api/submit', (req, res) => {
     return res.status(404).json({ error: 'Test topilmadi yoki allaqachon yakunlangan' });
   }
   const answers = Array.isArray(req.body.answers) ? req.body.answers : [];
+  const person = { fullName: session.fullName, region: session.region, direction: session.direction };
+
+  if (session.mode === 'survey') {
+    const survey = collectSurvey(session, answers);
+    if (!survey.answered) return res.status(400).json({ error: 'Kamida bitta savolga javob bering' });
+    sessions.delete(req.body.sessionId);
+    saveSurvey(session, survey);
+    return res.json({ mode: 'survey', ...person, answered: survey.answered, total: survey.total });
+  }
 
   const result = grade(session, answers);
   sessions.delete(req.body.sessionId);
   saveResult(session, result);
 
-  res.json({ fullName: session.fullName, region: session.region, direction: session.direction, ...result });
+  res.json({ mode: 'test', ...person, ...result });
 });
 
 // Jadvalni o'zgartiradigan amallardan keyin savollar va sozlamalar darhol qayta o'qiladi
-const ADMIN_WRITES = ['saveSettings', 'saveQuestion', 'deleteQuestion', 'addSheet'];
+const ADMIN_WRITES = [
+  'saveSettings',
+  'saveQuestion',
+  'deleteQuestion',
+  'addSheet',
+  'renameSheet',
+  'archiveSheet',
+  'restoreSheet',
+];
 
 app.post('/api/admin', async (req, res) => {
   if (!sheetsEnabled) {
