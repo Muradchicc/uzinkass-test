@@ -185,6 +185,7 @@ function toForm(data) {
         sheets: d.sheets,
         type: d.type === 'survey' ? 'survey' : 'test',
         region: d.region !== false,
+        visible: d.visible !== false,
       }),
     ),
   };
@@ -489,7 +490,7 @@ function SettingsTab({ call }) {
     event.preventDefault();
     const regions = form.regions.map((r) => r.value.trim()).filter(Boolean);
     const directions = form.directions
-      .map(({ name, sheets, type, region }) => ({ name: name.trim(), sheets, type, region }))
+      .map(({ name, sheets, type, region, visible }) => ({ name: name.trim(), sheets, type, region, visible }))
       .filter((d) => d.name);
     const fresh = await saver.run(() => {
       const region = findDuplicate(regions);
@@ -601,12 +602,15 @@ function SettingsTab({ call }) {
         </h2>
         <p className="hint">
           {t.tr(
-            "Har bir yo'nalishning turini tanlang va savol tushadigan bo'limlarni belgilang. Testda hech bir bo'lim belgilanmasa — barcha bo'limlardan savol tushadi; so'rovnomaga kamida bitta bo'lim belgilanadi. «Hudud so'raladi» belgisi olib tashlansa, xodim hudud tanlamaydi va natijada hudud bo'sh qoladi.",
+            "Har bir yo'nalishning turini tanlang va savol tushadigan bo'limlarni belgilang. Testda hech bir bo'lim belgilanmasa — barcha bo'limlardan savol tushadi; so'rovnomaga kamida bitta bo'lim belgilanadi. «Ko'rsatiladi» belgisi olib tashlansa, yo'nalish xodimning ro'yxatidan yashiriladi (savollari saqlanadi); faqat bittasi ko'rsatilsa, u avtomatik tanlanadi. «Hudud so'raladi» belgisi olib tashlansa, xodim hudud tanlamaydi va natijada hudud bo'sh qoladi.",
           )}
         </p>
         <ul className="directions">
           {form.directions.map((direction, index) => (
-            <li key={direction.key} className={`direction${direction.type === 'survey' ? ' survey' : ''}`}>
+            <li
+              key={direction.key}
+              className={`direction${direction.type === 'survey' ? ' survey' : ''}${direction.visible ? '' : ' off'}`}
+            >
               <div className="direction-head">
                 <input
                   aria-label={t.tr("Yo'nalish nomi")}
@@ -628,7 +632,15 @@ function SettingsTab({ call }) {
                     </button>
                   ))}
                 </div>
-                <label className={`chip region-toggle${direction.region ? ' on' : ''}`}>
+                <label className={`chip flag-toggle${direction.visible ? ' on' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={direction.visible}
+                    onChange={(e) => updateDirection(index, { visible: e.target.checked })}
+                  />
+                  {t.tr("Ko'rsatiladi")}
+                </label>
+                <label className={`chip flag-toggle${direction.region ? ' on' : ''}`}>
                   <input
                     type="checkbox"
                     checked={direction.region}
@@ -677,7 +689,7 @@ function SettingsTab({ call }) {
         <button
           type="button"
           className="btn"
-          onClick={() => update({ directions: [...form.directions, withKey({ name: '', sheets: [], type: 'test', region: true })] })}
+          onClick={() => update({ directions: [...form.directions, withKey({ name: '', sheets: [], type: 'test', region: true, visible: true })] })}
         >
           <Icon name="plus" size={18} /> {t.tr("Yo'nalish qo'shish")}
         </button>

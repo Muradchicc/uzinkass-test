@@ -230,8 +230,8 @@ legend {
   min-width: 0;
 }
 
-/* Yo'nalish qatoridagi «Hudud so'raladi» belgisi — tugmalar balandligida */
-.direction-head .region-toggle {
+/* Yo'nalish qatoridagi «Ko'rsatiladi» va «Hudud so'raladi» belgilari — tugmalar balandligida */
+.direction-head .flag-toggle {
   flex: none;
   min-height: 48px;
   border-radius: var(--radius);
@@ -240,6 +240,16 @@ legend {
 .direction.survey {
   border-color: #e9d8a6;
   background: #fdfaf1;
+}
+
+/* Xodimga ko'rsatilmaydigan yo'nalish xira, lekin tahrirlash mumkin */
+.direction.off {
+  border-style: dashed;
+}
+
+.direction.off > :not(.direction-head),
+.direction.off .direction-head > input {
+  opacity: 0.55;
 }
 
 .direction-note {

@@ -95,13 +95,15 @@ function doPost(e) {
 /** Bosh sahifa uchun: hududlar va yo'nalishlar ro'yxati. */
 function publicConfig() {
   const settings = loadSettings();
+  // Admin paneldagi «Ko'rsatiladi» belgisi o'chirilgan yo'nalishlar xodimga berilmaydi
+  const visible = settings.directions.filter(function (d) { return d.visible; });
   return {
     regions: settings.regions,
-    directions: settings.directions.map(function (d) { return d.name; }),
+    directions: visible.map(function (d) { return d.name; }),
     // So'rovnoma turidagi yo'nalishlar (qolganlari — test)
-    surveys: settings.directions.filter(isSurvey).map(function (d) { return d.name; }),
+    surveys: visible.filter(isSurvey).map(function (d) { return d.name; }),
     // Hudud so'ralmaydigan yo'nalishlar (admin paneldagi «Hudud so'raladi» belgisi o'chirilgan)
-    noRegion: settings.directions.filter(function (d) { return !d.region; }).map(function (d) { return d.name; }),
+    noRegion: visible.filter(function (d) { return !d.region; }).map(function (d) { return d.name; }),
     secondsPerQuestion: settings.secondsPerQuestion,
     texts: settings.texts,
   };
@@ -283,9 +285,10 @@ function readPerson(body, settings) {
   return { region: region, fullName: parts.join(' '), direction: direction.name, directionInfo: direction };
 }
 
+// Faqat xodimga ko'rsatiladigan yo'nalish topiladi: yashirilganini to'g'ridan-to'g'ri so'rov bilan ham boshlab bo'lmaydi
 function findDirection(settings, name) {
   const wanted = clean(name);
-  return settings.directions.filter(function (d) { return d.name === wanted; })[0] || null;
+  return settings.directions.filter(function (d) { return d.visible && d.name === wanted; })[0] || null;
 }
 
 function isSurvey(direction) {
@@ -300,8 +303,8 @@ function parseDirectionType(value) {
     : 'test';
 }
 
-// "_Sozlamalar" G ustuni: "Yo'q" (yoki kirill/rus yozuvida) — hudud so'ralmaydi, bo'sh yoki boshqa qiymat — so'raladi
-function parseRegionFlag(value) {
+// "_Sozlamalar" G va H ustunlari: "Yo'q" (yoki kirill/rus yozuvida) — o'chirilgan, bo'sh yoki boshqa qiymat — yoqilgan
+function parseYesFlag(value) {
   const v = norm(value).replace(/[ʻʼ‘’`]/g, "'");
   return ["yo'q", 'йўқ', 'нет', 'no', 'false', '0'].indexOf(v) === -1;
 }
@@ -316,6 +319,7 @@ function inDirection(direction, section) {
  *   A — Hududlar | B — Yo'nalishlar | C — yo'nalish listlari (vergul bilan) | D — yo'nalish turi
  *   (bo'sh yoki "Test" — test, "So'rovnoma" — so'rovnoma) | E — Sozlama | F — Qiymat
  *   | G — yo'nalishda hudud so'raladimi (bo'sh yoki "Ha" — so'raladi, "Yo'q" — so'ralmaydi)
+ *   | H — yo'nalish xodimga ko'rsatiladimi (bo'sh yoki "Ha" — ko'rsatiladi, "Yo'q" — yashirilgan)
  */
 function loadSettings() {
   const book = SpreadsheetApp.getActiveSpreadsheet();
@@ -331,7 +335,8 @@ function loadSettings() {
         name: clean(row[1]),
         sheets: String(row[2] || '').split(/[;,]/).map(clean).filter(Boolean),
         type: parseDirectionType(row[3]),
-        region: parseRegionFlag(row[6]),
+        region: parseYesFlag(row[6]),
+        visible: parseYesFlag(row[7]),
       });
     }
     if (clean(row[4])) values[norm(row[4])] = row[5];
@@ -355,7 +360,7 @@ function loadSettings() {
 // Sozlanmagan bo'lsa har bir savollar listi alohida yo'nalish hisoblanadi
 function defaultDirections() {
   return questionSheets().map(function (sheet) {
-    return { name: sheet.getName(), sheets: [sheet.getName()], type: 'test', region: true };
+    return { name: sheet.getName(), sheets: [sheet.getName()], type: 'test', region: true, visible: true };
   });
 }
 
@@ -383,6 +388,7 @@ function writeSettingsSheet(sheet, settings) {
   const rows = [[
     'Hududlar', "Yo'nalishlar", "Yo'nalish listlari (vergul bilan; bo'sh — barcha listlar)",
     "Turi (Test / So'rovnoma)", 'Sozlama', 'Qiymat', "Hudud so'raladi (Ha / Yo'q)",
+    "Ko'rsatiladi (Ha / Yo'q)",
   ]];
   const height = Math.max(settings.regions.length, settings.directions.length, 2);
   for (let i = 0; i < height; i++) {
@@ -395,6 +401,7 @@ function writeSettingsSheet(sheet, settings) {
       ['Savollar soni', 'Bir savolga vaqt (soniya)'][i] || '',
       [settings.questionCount, settings.secondsPerQuestion][i] || '',
       direction ? (direction.region === false ? "Yo'q" : 'Ha') : '',
+      direction ? (direction.visible === false ? "Yo'q" : 'Ha') : '',
     ]);
   }
   sheet.clearContents();
@@ -555,6 +562,7 @@ function saveSettings(input) {
         sheets: (d && Array.isArray(d.sheets) ? d.sheets : []).map(clean).filter(Boolean),
         type: d && d.type === 'survey' ? 'survey' : 'test',
         region: !(d && d.region === false),
+        visible: !(d && d.visible === false),
       };
     })
     .filter(function (d) { return d.name; });
@@ -696,7 +704,7 @@ function addSurvey(name) {
   sheet.appendRow(['Savol', 'A', 'B', 'C', 'D', "To'g'ri javob"]);
   sheet.getRange(1, 1, 1, 6).setFontWeight('bold');
   sheet.setFrozenRows(1);
-  settings.directions.push({ name: title, sheets: [title], type: 'survey', region: true });
+  settings.directions.push({ name: title, sheets: [title], type: 'survey', region: true, visible: true });
   writeSettingsSheet(SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SETTINGS_SHEET), settings);
   return adminSettings();
 }

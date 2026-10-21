@@ -30,14 +30,17 @@ function StartScreen({ onStart }) {
 
   const set = (field) => (event) => setForm((prev) => ({ ...prev, [field]: event.target.value }));
 
+  // Admin faqat bitta yo'nalishni ko'rsatgan bo'lsa, u avtomatik tanlanadi va maydon chiqmaydi
+  const onlyDirection = options?.directions.length === 1 ? options.directions[0] : null;
+  const chosenDirection = onlyDirection ?? form.direction;
   // Yo'nalish tanlanadi, so'ng hudud — agar admin shu yo'nalish uchun uni o'chirmagan bo'lsa
-  const needsRegion = !(options?.noRegion ?? []).includes(form.direction);
+  const needsRegion = !(options?.noRegion ?? []).includes(chosenDirection);
   const person = {
     region: needsRegion ? form.region : '',
     lastName: form.lastName.trim(),
     firstName: form.firstName.trim(),
     middleName: form.middleName.trim(),
-    direction: form.direction,
+    direction: chosenDirection,
   };
   const ready =
     (person.region || !needsRegion) &&
@@ -59,7 +62,7 @@ function StartScreen({ onStart }) {
 
   const minutesPerQuestion = options ? Math.round((options.secondsPerQuestion / 60) * 10) / 10 : 1;
   const surveys = options?.surveys ?? [];
-  const isSurvey = surveys.includes(form.direction);
+  const isSurvey = surveys.includes(chosenDirection);
   // Admin paneldagi qoidalar test uchun yozilgan, so'rovnomada o'z qoidalari ko'rsatiladi
   const rules = isSurvey
     ? [t('surveyRuleAll'), t('surveyRuleNoTime'), t('ruleNoBack')]
@@ -76,18 +79,21 @@ function StartScreen({ onStart }) {
       <h1>{t.custom(options?.texts, 'title') ?? t('title')}</h1>
       <p className="lead">{t.custom(options?.texts, 'lead') ?? t('lead')}</p>
 
-      <div className="field">
-        <label htmlFor="direction">{t('direction')}</label>
-        <select id="direction" value={form.direction} onChange={set('direction')} disabled={!options} required>
-          <option value="">{options ? t('chooseDirection') : t('loading')}</option>
-          {options?.directions.map((direction) => (
-            <option key={direction} value={direction}>
-              {t.tr(direction)}
-              {surveys.includes(direction) ? ` (${t('surveyTag')})` : ''}
-            </option>
-          ))}
-        </select>
-      </div>
+      {onlyDirection ? null : (
+        <div className="field">
+          <label htmlFor="direction">{t('direction')}</label>
+          <select id="direction" value={form.direction} onChange={set('direction')} disabled={!options} required>
+            <option value="">{options ? t('chooseDirection') : t('loading')}</option>
+            {options?.directions.map((direction) => (
+              <option key={direction} value={direction}>
+                {t.tr(direction)}
+                {surveys.includes(direction) ? ` (${t('surveyTag')})` : ''}
+              </option>
+            ))}
+          </select>
+          {options && !options.directions.length ? <p className="hint">{t('noDirections')}</p> : null}
+        </div>
+      )}
 
       {needsRegion ? (
         <div className="field">

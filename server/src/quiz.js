@@ -56,20 +56,23 @@ export async function refreshQuestions() {
 // Bosh sahifa uchun: hududlar va yo'nalishlar ro'yxati
 export function publicConfig() {
   if (!settings) return null;
+  // Admin paneldagi «Ko'rsatiladi» belgisi o'chirilgan yo'nalishlar xodimga berilmaydi
+  const visible = settings.directions.filter((d) => d.visible);
   return {
     regions: settings.regions,
-    directions: settings.directions.map((d) => d.name),
+    directions: visible.map((d) => d.name),
     // So'rovnoma turidagi yo'nalishlar (qolganlari — test)
-    surveys: settings.directions.filter((d) => d.type === 'survey').map((d) => d.name),
+    surveys: visible.filter((d) => d.type === 'survey').map((d) => d.name),
     // Hudud so'ralmaydigan yo'nalishlar
-    noRegion: settings.directions.filter((d) => !d.region).map((d) => d.name),
+    noRegion: visible.filter((d) => !d.region).map((d) => d.name),
     secondsPerQuestion: settings.secondsPerQuestion,
     texts: settings.texts ?? { lat: {}, cyr: {} },
   };
 }
 
 export const findRegion = (name) => settings?.regions.find((r) => r === name) ?? null;
-export const findDirection = (name) => settings?.directions.find((d) => d.name === name) ?? null;
+// Yashirilgan yo'nalishni to'g'ridan-to'g'ri so'rov bilan ham boshlab bo'lmaydi
+export const findDirection = (name) => settings?.directions.find((d) => d.visible && d.name === name) ?? null;
 
 // Yo'nalishga biriktirilgan bo'limlardan navbatma-navbat bittadan olib savollar yig'adi.
 // Listlari ko'rsatilmagan yo'nalishga barcha bo'limlardan savol tushadi.
