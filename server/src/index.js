@@ -48,10 +48,11 @@ app.post('/api/start', (req, res) => {
   if (names.some((n) => n.length < 2)) {
     return res.status(400).json({ error: "Familiya, ism va sharifni to'liq kiriting" });
   }
-  const region = findRegion(clean(req.body?.region, 120));
-  if (!region) return res.status(400).json({ error: 'Hududni tanlang' });
   const direction = findDirection(clean(req.body?.direction, 120));
   if (!direction) return res.status(400).json({ error: "Yo'nalishni tanlang" });
+  // Hudud so'ralmaydigan yo'nalishda natijaga bo'sh hudud yoziladi
+  const region = direction.region ? findRegion(clean(req.body?.region, 120)) : '';
+  if (region === null) return res.status(400).json({ error: 'Hududni tanlang' });
 
   const { mode, questions, timeLimit } = pickQuestions(direction);
   if (!questions.length) {

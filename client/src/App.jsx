@@ -30,15 +30,17 @@ function StartScreen({ onStart }) {
 
   const set = (field) => (event) => setForm((prev) => ({ ...prev, [field]: event.target.value }));
 
+  // Yo'nalish tanlanadi, so'ng hudud — agar admin shu yo'nalish uchun uni o'chirmagan bo'lsa
+  const needsRegion = !(options?.noRegion ?? []).includes(form.direction);
   const person = {
-    region: form.region,
+    region: needsRegion ? form.region : '',
     lastName: form.lastName.trim(),
     firstName: form.firstName.trim(),
     middleName: form.middleName.trim(),
     direction: form.direction,
   };
   const ready =
-    person.region &&
+    (person.region || !needsRegion) &&
     person.direction &&
     [person.lastName, person.firstName, person.middleName].every((name) => name.length >= 2);
 
@@ -75,16 +77,31 @@ function StartScreen({ onStart }) {
       <p className="lead">{t.custom(options?.texts, 'lead') ?? t('lead')}</p>
 
       <div className="field">
-        <label htmlFor="region">{t('region')}</label>
-        <select id="region" value={form.region} onChange={set('region')} disabled={!options} required>
-          <option value="">{options ? t('chooseRegion') : t('loading')}</option>
-          {options?.regions.map((region) => (
-            <option key={region} value={region}>
-              {t.tr(region)}
+        <label htmlFor="direction">{t('direction')}</label>
+        <select id="direction" value={form.direction} onChange={set('direction')} disabled={!options} required>
+          <option value="">{options ? t('chooseDirection') : t('loading')}</option>
+          {options?.directions.map((direction) => (
+            <option key={direction} value={direction}>
+              {t.tr(direction)}
+              {surveys.includes(direction) ? ` (${t('surveyTag')})` : ''}
             </option>
           ))}
         </select>
       </div>
+
+      {needsRegion ? (
+        <div className="field">
+          <label htmlFor="region">{t('region')}</label>
+          <select id="region" value={form.region} onChange={set('region')} disabled={!options} required>
+            <option value="">{options ? t('chooseRegion') : t('loading')}</option>
+            {options?.regions.map((region) => (
+              <option key={region} value={region}>
+                {t.tr(region)}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
 
       <div className="field">
         <label htmlFor="lastName">{t('lastName')}</label>
@@ -121,19 +138,6 @@ function StartScreen({ onStart }) {
           maxLength={60}
           required
         />
-      </div>
-
-      <div className="field">
-        <label htmlFor="direction">{t('direction')}</label>
-        <select id="direction" value={form.direction} onChange={set('direction')} disabled={!options} required>
-          <option value="">{options ? t('chooseDirection') : t('loading')}</option>
-          {options?.directions.map((direction) => (
-            <option key={direction} value={direction}>
-              {t.tr(direction)}
-              {surveys.includes(direction) ? ` (${t('surveyTag')})` : ''}
-            </option>
-          ))}
-        </select>
       </div>
 
       <ul className="rules">
@@ -348,7 +352,7 @@ function SurveyDoneScreen({ result, onRestart }) {
       <p className="lead">
         {t.tr(result.fullName)}
         <br />
-        {t.tr(result.region)} · {t.tr(result.direction)}
+        {[result.region, result.direction].filter(Boolean).map(t.tr).join(' · ')}
       </p>
       <p className="all-right">
         <Icon name="check" />
@@ -370,7 +374,7 @@ function ResultScreen({ result, onRestart }) {
       <p className="lead">
         {t.tr(result.fullName)}
         <br />
-        {t.tr(result.region)} · {t.tr(result.direction)}
+        {[result.region, result.direction].filter(Boolean).map(t.tr).join(' · ')}
       </p>
 
       <div className="score">

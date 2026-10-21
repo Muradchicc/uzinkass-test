@@ -54,7 +54,7 @@ function submitViaScript(answers) {
   });
 }
 
-// { regions, directions, surveys, secondsPerQuestion, texts }
+// { regions, directions, surveys, noRegion, secondsPerQuestion, texts }
 export const loadConfig = () => request(SCRIPT_URL ? `${SCRIPT_URL}?action=config` : '/api/config');
 
 // person: { region, lastName, firstName, middleName, direction }

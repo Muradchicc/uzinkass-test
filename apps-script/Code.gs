@@ -100,6 +100,8 @@ function publicConfig() {
     directions: settings.directions.map(function (d) { return d.name; }),
     // So'rovnoma turidagi yo'nalishlar (qolganlari — test)
     surveys: settings.directions.filter(isSurvey).map(function (d) { return d.name; }),
+    // Hudud so'ralmaydigan yo'nalishlar (admin paneldagi «Hudud so'raladi» belgisi o'chirilgan)
+    noRegion: settings.directions.filter(function (d) { return !d.region; }).map(function (d) { return d.name; }),
     secondsPerQuestion: settings.secondsPerQuestion,
     texts: settings.texts,
   };
@@ -274,10 +276,10 @@ function surveyAnswer(q, raw) {
 function readPerson(body, settings) {
   const parts = [clean(body.lastName), clean(body.firstName), clean(body.middleName)];
   if (parts.some(function (p) { return p.length < 2; })) return { error: "Familiya, ism va sharifni to'liq kiriting" };
-  const region = clean(body.region);
-  if (settings.regions.indexOf(region) === -1) return { error: 'Hududni tanlang' };
   const direction = findDirection(settings, body.direction);
   if (!direction) return { error: "Yo'nalishni tanlang" };
+  const region = direction.region ? clean(body.region) : '';
+  if (direction.region && settings.regions.indexOf(region) === -1) return { error: 'Hududni tanlang' };
   return { region: region, fullName: parts.join(' '), direction: direction.name, directionInfo: direction };
 }
 
@@ -298,6 +300,12 @@ function parseDirectionType(value) {
     : 'test';
 }
 
+// "_Sozlamalar" G ustuni: "Yo'q" (yoki kirill/rus yozuvida) — hudud so'ralmaydi, bo'sh yoki boshqa qiymat — so'raladi
+function parseRegionFlag(value) {
+  const v = norm(value).replace(/[ʻʼ‘’`]/g, "'");
+  return ["yo'q", 'йўқ', 'нет', 'no', 'false', '0'].indexOf(v) === -1;
+}
+
 // Listlari ko'rsatilmagan yo'nalishga barcha listlardan savol tushadi
 function inDirection(direction, section) {
   return !direction.sheets.length || direction.sheets.map(norm).indexOf(norm(section)) !== -1;
@@ -307,6 +315,7 @@ function inDirection(direction, section) {
  * "_Sozlamalar" listini o'qiydi:
  *   A — Hududlar | B — Yo'nalishlar | C — yo'nalish listlari (vergul bilan) | D — yo'nalish turi
  *   (bo'sh yoki "Test" — test, "So'rovnoma" — so'rovnoma) | E — Sozlama | F — Qiymat
+ *   | G — yo'nalishda hudud so'raladimi (bo'sh yoki "Ha" — so'raladi, "Yo'q" — so'ralmaydi)
  */
 function loadSettings() {
   const book = SpreadsheetApp.getActiveSpreadsheet();
@@ -322,6 +331,7 @@ function loadSettings() {
         name: clean(row[1]),
         sheets: String(row[2] || '').split(/[;,]/).map(clean).filter(Boolean),
         type: parseDirectionType(row[3]),
+        region: parseRegionFlag(row[6]),
       });
     }
     if (clean(row[4])) values[norm(row[4])] = row[5];
@@ -345,7 +355,7 @@ function loadSettings() {
 // Sozlanmagan bo'lsa har bir savollar listi alohida yo'nalish hisoblanadi
 function defaultDirections() {
   return questionSheets().map(function (sheet) {
-    return { name: sheet.getName(), sheets: [sheet.getName()], type: 'test' };
+    return { name: sheet.getName(), sheets: [sheet.getName()], type: 'test', region: true };
   });
 }
 
@@ -372,7 +382,7 @@ function createSettingsSheet(book) {
 function writeSettingsSheet(sheet, settings) {
   const rows = [[
     'Hududlar', "Yo'nalishlar", "Yo'nalish listlari (vergul bilan; bo'sh — barcha listlar)",
-    "Turi (Test / So'rovnoma)", 'Sozlama', 'Qiymat',
+    "Turi (Test / So'rovnoma)", 'Sozlama', 'Qiymat', "Hudud so'raladi (Ha / Yo'q)",
   ]];
   const height = Math.max(settings.regions.length, settings.directions.length, 2);
   for (let i = 0; i < height; i++) {
@@ -384,6 +394,7 @@ function writeSettingsSheet(sheet, settings) {
       direction ? (isSurvey(direction) ? "So'rovnoma" : 'Test') : '',
       ['Savollar soni', 'Bir savolga vaqt (soniya)'][i] || '',
       [settings.questionCount, settings.secondsPerQuestion][i] || '',
+      direction ? (direction.region === false ? "Yo'q" : 'Ha') : '',
     ]);
   }
   sheet.clearContents();
@@ -543,6 +554,7 @@ function saveSettings(input) {
         name: clean(d && d.name),
         sheets: (d && Array.isArray(d.sheets) ? d.sheets : []).map(clean).filter(Boolean),
         type: d && d.type === 'survey' ? 'survey' : 'test',
+        region: !(d && d.region === false),
       };
     })
     .filter(function (d) { return d.name; });
@@ -684,7 +696,7 @@ function addSurvey(name) {
   sheet.appendRow(['Savol', 'A', 'B', 'C', 'D', "To'g'ri javob"]);
   sheet.getRange(1, 1, 1, 6).setFontWeight('bold');
   sheet.setFrozenRows(1);
-  settings.directions.push({ name: title, sheets: [title], type: 'survey' });
+  settings.directions.push({ name: title, sheets: [title], type: 'survey', region: true });
   writeSettingsSheet(SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SETTINGS_SHEET), settings);
   return adminSettings();
 }

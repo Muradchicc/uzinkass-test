@@ -84,12 +84,14 @@ function normalizeSettings(raw, sections) {
       name: clean(d?.name),
       sheets: (d?.sheets ?? []).map(clean).filter(Boolean),
       type: d?.type === 'survey' ? 'survey' : 'test',
+      // Eski Code.gs bu maydonni yubormaydi — unda hudud so'raladi
+      region: d?.region !== false,
     }))
     .filter((d) => d.name);
   return {
     regions: regions.length ? regions : DEFAULT_REGIONS,
     // Sozlanmagan bo'lsa har bir savollar listi alohida yo'nalish (test) hisoblanadi
-    directions: directions.length ? directions : sections.map((s) => ({ name: s.title, sheets: [s.title], type: 'test' })),
+    directions: directions.length ? directions : sections.map((s) => ({ name: s.title, sheets: [s.title], type: 'test', region: true })),
     questionCount: Number(raw?.questionCount) || config.questionCount,
     secondsPerQuestion: Number(raw?.secondsPerQuestion) || config.secondsPerQuestion,
     // Admin paneldan o'zgartirilgan sayt matnlari ("_Matnlar" listi)

@@ -230,6 +230,13 @@ legend {
   min-width: 0;
 }
 
+/* Yo'nalish qatoridagi «Hudud so'raladi» belgisi — tugmalar balandligida */
+.direction-head .region-toggle {
+  flex: none;
+  min-height: 48px;
+  border-radius: var(--radius);
+}
+
 .direction.survey {
   border-color: #e9d8a6;
   background: #fdfaf1;

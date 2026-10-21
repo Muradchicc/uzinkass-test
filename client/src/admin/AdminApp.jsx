@@ -180,7 +180,12 @@ function toForm(data) {
     secondsPerQuestion: String(data.secondsPerQuestion),
     regions: data.regions.map((value) => withKey({ value })),
     directions: data.directions.map((d) =>
-      withKey({ name: d.name, sheets: d.sheets, type: d.type === 'survey' ? 'survey' : 'test' }),
+      withKey({
+        name: d.name,
+        sheets: d.sheets,
+        type: d.type === 'survey' ? 'survey' : 'test',
+        region: d.region !== false,
+      }),
     ),
   };
 }
@@ -484,7 +489,7 @@ function SettingsTab({ call }) {
     event.preventDefault();
     const regions = form.regions.map((r) => r.value.trim()).filter(Boolean);
     const directions = form.directions
-      .map(({ name, sheets, type }) => ({ name: name.trim(), sheets, type }))
+      .map(({ name, sheets, type, region }) => ({ name: name.trim(), sheets, type, region }))
       .filter((d) => d.name);
     const fresh = await saver.run(() => {
       const region = findDuplicate(regions);
@@ -596,7 +601,7 @@ function SettingsTab({ call }) {
         </h2>
         <p className="hint">
           {t.tr(
-            "Har bir yo'nalishning turini tanlang va savol tushadigan bo'limlarni belgilang. Testda hech bir bo'lim belgilanmasa — barcha bo'limlardan savol tushadi; so'rovnomaga kamida bitta bo'lim belgilanadi.",
+            "Har bir yo'nalishning turini tanlang va savol tushadigan bo'limlarni belgilang. Testda hech bir bo'lim belgilanmasa — barcha bo'limlardan savol tushadi; so'rovnomaga kamida bitta bo'lim belgilanadi. «Hudud so'raladi» belgisi olib tashlansa, xodim hudud tanlamaydi va natijada hudud bo'sh qoladi.",
           )}
         </p>
         <ul className="directions">
@@ -623,6 +628,14 @@ function SettingsTab({ call }) {
                     </button>
                   ))}
                 </div>
+                <label className={`chip region-toggle${direction.region ? ' on' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={direction.region}
+                    onChange={(e) => updateDirection(index, { region: e.target.checked })}
+                  />
+                  {t.tr("Hudud so'raladi")}
+                </label>
                 <MoveButtons
                   index={index}
                   count={form.directions.length}
@@ -664,7 +677,7 @@ function SettingsTab({ call }) {
         <button
           type="button"
           className="btn"
-          onClick={() => update({ directions: [...form.directions, withKey({ name: '', sheets: [], type: 'test' })] })}
+          onClick={() => update({ directions: [...form.directions, withKey({ name: '', sheets: [], type: 'test', region: true })] })}
         >
           <Icon name="plus" size={18} /> {t.tr("Yo'nalish qo'shish")}
         </button>

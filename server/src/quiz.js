@@ -61,6 +61,8 @@ export function publicConfig() {
     directions: settings.directions.map((d) => d.name),
     // So'rovnoma turidagi yo'nalishlar (qolganlari — test)
     surveys: settings.directions.filter((d) => d.type === 'survey').map((d) => d.name),
+    // Hudud so'ralmaydigan yo'nalishlar
+    noRegion: settings.directions.filter((d) => !d.region).map((d) => d.name),
     secondsPerQuestion: settings.secondsPerQuestion,
     texts: settings.texts ?? { lat: {}, cyr: {} },
   };
