@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { loadConfig, startTest, submitTest } from './api.js';
+import { cachedConfig, loadConfig, prefetchStart, startTest, submitTest } from './api.js';
 import { LangContext, useT } from './i18n.js';
 import { ErrorMessage, Icon, LangSwitch, useScript } from './common.jsx';
 import logo from './assets/logo.png';
@@ -15,7 +15,7 @@ function formatTime(seconds) {
 
 function StartScreen({ onStart }) {
   const t = useT();
-  const [options, setOptions] = useState(null);
+  const [options, setOptions] = useState(cachedConfig);
   const [form, setForm] = useState({ region: '', lastName: '', firstName: '', middleName: '', direction: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,7 +24,10 @@ function StartScreen({ onStart }) {
     setError('');
     loadConfig()
       .then(setOptions)
-      .catch((err) => setError(err.message));
+      // Eslab qolingan sozlamalar bilan forma ishlayveradi
+      .catch((err) => {
+        if (!cachedConfig()) setError(err.message);
+      });
   }
   useEffect(fetchOptions, []);
 
@@ -32,11 +35,14 @@ function StartScreen({ onStart }) {
 
   // Admin faqat bitta yo'nalishni ko'rsatgan bo'lsa, u avtomatik tanlanadi va maydon chiqmaydi
   const onlyDirection = options?.directions.length === 1 ? options.directions[0] : null;
-  const chosenDirection = onlyDirection ?? form.direction;
+  // Yangi sozlamalarda yashirilgan yo'nalish tanlangan holda qolmasligi kerak
+  const chosenDirection = onlyDirection ?? (options?.directions.includes(form.direction) ? form.direction : '');
   // Yo'nalish tanlanadi, so'ng hudud — agar admin shu yo'nalish uchun uni o'chirmagan bo'lsa
   const needsRegion = !(options?.noRegion ?? []).includes(chosenDirection);
+  // Apps Script rejimida savollar F.I.SH yozilayotganda fonda olinadi
+  useEffect(() => prefetchStart(chosenDirection), [chosenDirection]);
   const person = {
-    region: needsRegion ? form.region : '',
+    region: needsRegion && options?.regions.includes(form.region) ? form.region : '',
     lastName: form.lastName.trim(),
     firstName: form.firstName.trim(),
     middleName: form.middleName.trim(),

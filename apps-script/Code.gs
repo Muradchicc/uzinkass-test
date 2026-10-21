@@ -94,7 +94,7 @@ function doPost(e) {
 
 /** Bosh sahifa uchun: hududlar va yo'nalishlar ro'yxati. */
 function publicConfig() {
-  const settings = loadSettings();
+  const settings = publicSettings();
   // Admin paneldagi «Ko'rsatiladi» belgisi o'chirilgan yo'nalishlar xodimga berilmaydi
   const visible = settings.directions.filter(function (d) { return d.visible; });
   return {
@@ -111,14 +111,14 @@ function publicConfig() {
 
 /** Yo'nalishga biriktirilgan listlardan navbatma-navbat bittadan olib, savollar beradi (to'g'ri javoblarsiz). */
 function startTest(directionName) {
-  const settings = loadSettings();
+  const settings = publicSettings();
   const direction = findDirection(settings, directionName);
   if (!direction) return { error: "Yo'nalish topilmadi" };
   if (isSurvey(direction)) return startSurvey(direction);
 
   const pools = {};
   const names = [];
-  shuffle(loadQuestions()).forEach(function (q) {
+  shuffle(publicQuestions()).forEach(function (q) {
     if (!isTestQuestion(q) || !inDirection(direction, q.section)) return;
     if (!pools[q.section]) {
       pools[q.section] = [];
@@ -164,7 +164,7 @@ function startSurvey(direction) {
 // Listlar yo'nalishda ko'rsatilgan tartibda, har bir list ichida — qatorlar tartibida
 function surveyQuestions(direction) {
   const order = direction.sheets.map(norm);
-  return loadQuestions()
+  return publicQuestions()
     .filter(function (q) { return isSurveyQuestion(q) && inDirection(direction, q.section); })
     .map(function (q, i) { return { q: q, i: i }; })
     .sort(function (a, b) {
@@ -175,13 +175,13 @@ function surveyQuestions(direction) {
 
 /** Internetdagi sahifadan kelgan javoblarni baholab, "Natijalar" listiga yozadi. */
 function submitTest(body) {
-  const settings = loadSettings();
+  const settings = publicSettings();
   const person = readPerson(body, settings);
   if (person.error) return person;
   if (isSurvey(person.directionInfo)) return submitSurvey(body, person);
 
   const byId = {};
-  loadQuestions().forEach(function (q) {
+  publicQuestions().forEach(function (q) {
     if (isTestQuestion(q)) byId[q.id] = q;
   });
 
@@ -475,6 +475,8 @@ function adminAction(body) {
     if (body.op === 'archiveSheet') return archiveQuestionSheet(body.name);
     if (body.op === 'restoreSheet') return restoreQuestionSheet(body.name);
   } finally {
+    // Admin paneldagi o'zgarish xodimlarga darhol ko'rinsin
+    clearPublicCache();
     lock.releaseLock();
   }
   return { error: "Noma'lum amal" };
@@ -845,6 +847,56 @@ function questionSheets() {
 // Ustunlar: Savol | A | B | C | D | To'g'ri javob (1-qator — sarlavha)
 // `correct` — to'g'ri variantning matni (bo'lmasa null). Test va so'rovnoma savollari birga qaytadi,
 // kerakligini isTestQuestion / isSurveyQuestion bilan ajratib olinadi
+// --- Kesh ---
+// Apps Script har so'rovga 2-3 soniya sarflaydi, jadvalni o'qish yana 1-2 soniya qo'shadi.
+// Internetdagi sahifa uchun sozlamalar va savollar keshdan olinadi; admin paneldan saqlanganda kesh tozalanadi,
+// jadvalning o'zida qo'lda qilingan o'zgarish esa CACHE_SECONDS ichida ko'rinadi.
+const CACHE_SECONDS = 300;
+// CacheService bitta qiymatga 100 KB beradi; kirill harfi 2 bayt, shuning uchun bo'laklarga bo'linadi
+const CACHE_CHUNK = 40000;
+const CACHE_KEYS = ['settings', 'questions'];
+
+function publicSettings() {
+  return cached('settings', loadSettings);
+}
+
+function publicQuestions() {
+  return cached('questions', loadQuestions);
+}
+
+function cached(key, loader) {
+  const cache = CacheService.getScriptCache();
+  try {
+    const count = parseInt(cache.get(key + ':n'), 10);
+    if (count > 0) {
+      const keys = [];
+      for (let i = 0; i < count; i++) keys.push(key + ':' + i);
+      const parts = cache.getAll(keys);
+      if (keys.every(function (k) { return typeof parts[k] === 'string'; })) {
+        return JSON.parse(keys.map(function (k) { return parts[k]; }).join(''));
+      }
+    }
+  } catch (err) {
+    // Kesh buzilgan bo'lsa jadvaldan o'qiladi
+  }
+  const value = loader();
+  try {
+    const text = JSON.stringify(value);
+    const entries = {};
+    let n = 0;
+    for (let i = 0; i < text.length; i += CACHE_CHUNK) entries[key + ':' + n++] = text.slice(i, i + CACHE_CHUNK);
+    entries[key + ':n'] = String(n);
+    cache.putAll(entries, CACHE_SECONDS);
+  } catch (err) {
+    // Keshga sig'masa har safar jadvaldan o'qiladi
+  }
+  return value;
+}
+
+function clearPublicCache() {
+  CacheService.getScriptCache().removeAll(CACHE_KEYS.map(function (k) { return k + ':n'; }));
+}
+
 function loadQuestions() {
   const list = [];
   questionSheets().forEach(function (sheet) {
